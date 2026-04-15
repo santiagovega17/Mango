@@ -178,6 +178,52 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   };
 }
 
+// ── Query completa de transacciones ──────────────────────────────────────────
+
+export interface TransaccionCompleta {
+  id: string;
+  monto: number;
+  tipo: TransaccionTipo;
+  moneda: MonedaTipo;
+  descripcion: string | null;
+  fecha: string; // "YYYY-MM-DD"
+  categoria_nombre: string | null;
+  categoria_color: string | null;
+  cuenta_nombre: string | null;
+  cuenta_id: string;
+  categoria_id: string | null;
+}
+
+export async function getTransacciones(
+  userId: string
+): Promise<TransaccionCompleta[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("transacciones")
+    .select(
+      "id, monto, tipo, moneda, descripcion, fecha, cuenta_id, categoria_id, categorias(nombre, color), cuentas(nombre)"
+    )
+    .eq("usuario_id", userId)
+    .order("fecha", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((t: any) => ({
+    id: t.id,
+    monto: Number(t.monto),
+    tipo: t.tipo as TransaccionTipo,
+    moneda: t.moneda as MonedaTipo,
+    descripcion: t.descripcion ?? null,
+    fecha: t.fecha,
+    categoria_nombre: t.categorias?.nombre ?? null,
+    categoria_color: t.categorias?.color ?? null,
+    cuenta_nombre: t.cuentas?.nombre ?? null,
+    cuenta_id: t.cuenta_id,
+    categoria_id: t.categoria_id ?? null,
+  }));
+}
+
 // ── Query liviana: solo cuentas (para selects en formularios) ─────────────────
 
 export async function getCuentasUsuario(

@@ -1,9 +1,37 @@
-export default function TransaccionesPage() {
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { getTransacciones, getCuentasUsuario } from "@/lib/data";
+import { TransaccionesTable } from "@/components/transacciones-table";
+
+export default async function TransaccionesPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+
+  const [transacciones, cuentas] = await Promise.all([
+    getTransacciones(user.id),
+    getCuentasUsuario(user.id),
+  ]);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
-      <span className="text-4xl">💸</span>
-      <h1 className="text-2xl font-bold text-foreground">Transacciones</h1>
-      <p className="text-muted-foreground text-sm">Próximamente — Paso 4</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Transacciones
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Historial completo de tus ingresos y egresos.
+          </p>
+        </div>
+      </div>
+
+      {/* Tabla con filtros */}
+      <TransaccionesTable transacciones={transacciones} cuentas={cuentas} />
     </div>
   );
 }
