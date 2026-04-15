@@ -118,6 +118,7 @@ export interface Database {
           nombre_activo: string;
           cantidad: number;
           precio_compra: number;
+          precio_actual: number | null;
           moneda: MonedaTipo;
           tipo_activo: string;
           created_at: string;
@@ -128,6 +129,7 @@ export interface Database {
           nombre_activo: string;
           cantidad: number;
           precio_compra: number;
+          precio_actual?: number | null;
           moneda: MonedaTipo;
           tipo_activo: string;
           created_at?: string;
@@ -136,6 +138,7 @@ export interface Database {
           nombre_activo?: string;
           cantidad?: number;
           precio_compra?: number;
+          precio_actual?: number | null;
           moneda?: MonedaTipo;
           tipo_activo?: string;
         };

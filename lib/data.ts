@@ -224,6 +224,63 @@ export async function getTransacciones(
   }));
 }
 
+// ── Query de inversiones ──────────────────────────────────────────────────────
+
+export interface InversionItem {
+  id: string;
+  nombre_activo: string;
+  tipo_activo: string;
+  cantidad: number;
+  precio_compra: number;
+  precio_actual: number | null;
+  moneda: MonedaTipo;
+}
+
+export async function getInversiones(
+  userId: string
+): Promise<InversionItem[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("inversiones")
+    .select(
+      "id, nombre_activo, tipo_activo, cantidad, precio_compra, precio_actual, moneda"
+    )
+    .eq("usuario_id", userId)
+    .order("created_at", { ascending: false });
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((i: any) => ({
+    id: i.id,
+    nombre_activo: i.nombre_activo,
+    tipo_activo: i.tipo_activo,
+    cantidad: Number(i.cantidad),
+    precio_compra: Number(i.precio_compra),
+    precio_actual: i.precio_actual != null ? Number(i.precio_actual) : null,
+    moneda: i.moneda as MonedaTipo,
+  }));
+}
+
+// ── Cotización dólar blue desde dolarapi.com ──────────────────────────────────
+
+export interface CotizacionDolar {
+  compra: number;
+  venta: number;
+  nombre: string;
+}
+
+export async function fetchDolarBlue(): Promise<CotizacionDolar | null> {
+  try {
+    const res = await fetch("https://dolarapi.com/v1/dolares/blue", {
+      next: { revalidate: 3600 }, // refrescar cada hora
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as CotizacionDolar;
+  } catch {
+    return null;
+  }
+}
+
 // ── Query liviana: solo cuentas (para selects en formularios) ─────────────────
 
 export async function getCuentasUsuario(

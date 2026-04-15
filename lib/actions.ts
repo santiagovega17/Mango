@@ -185,6 +185,119 @@ export async function crearTransaccion(
   }
 }
 
+// ── CREAR INVERSIÓN ───────────────────────────────────────────────────────────
+
+export async function crearInversion(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const nombre_activo = required(formData.get("nombre_activo"), "Nombre del activo");
+    const tipo_activo = required(formData.get("tipo_activo"), "Tipo de activo");
+    const moneda = required(formData.get("moneda"), "Moneda") as "ARS" | "USD";
+    const cantidadRaw = required(formData.get("cantidad"), "Cantidad");
+    const precioCompraRaw = required(formData.get("precio_compra"), "Precio de compra");
+    const precioActualRaw = (formData.get("precio_actual") as string)?.trim() || "";
+
+    const cantidad = parseFloat(cantidadRaw);
+    if (isNaN(cantidad) || cantidad <= 0)
+      return { error: "La cantidad debe ser un número mayor a 0." };
+
+    const precio_compra = parseFloat(precioCompraRaw);
+    if (isNaN(precio_compra) || precio_compra < 0)
+      return { error: "El precio de compra debe ser un número positivo." };
+
+    const precio_actual =
+      precioActualRaw !== "" ? parseFloat(precioActualRaw) : null;
+    if (precio_actual !== null && (isNaN(precio_actual) || precio_actual < 0))
+      return { error: "El precio actual debe ser un número positivo." };
+
+    if (!["ARS", "USD"].includes(moneda))
+      return { error: "La moneda debe ser ARS o USD." };
+
+    const { error } = await supabase.from("inversiones").insert({
+      usuario_id: user.id,
+      nombre_activo,
+      tipo_activo,
+      moneda,
+      cantidad,
+      precio_compra,
+      precio_actual,
+    });
+
+    if (error) {
+      console.error("Supabase crearInversion:", error);
+      return { error: "No se pudo guardar la inversión. Intentá de nuevo." };
+    }
+
+    revalidatePath("/inversiones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+// ── ELIMINAR INVERSIÓN ────────────────────────────────────────────────────────
+
+export async function eliminarInversion(
+  inversionId: string
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const { error } = await supabase
+      .from("inversiones")
+      .delete()
+      .eq("id", inversionId)
+      .eq("usuario_id", user.id);
+
+    if (error) {
+      console.error("Supabase eliminarInversion:", error);
+      return { error: "No se pudo eliminar la inversión. Intentá de nuevo." };
+    }
+
+    revalidatePath("/inversiones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+// ── ACTUALIZAR PRECIO ACTUAL ──────────────────────────────────────────────────
+
+export async function actualizarPrecioActual(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const inversionId = required(formData.get("inversion_id"), "ID de inversión");
+    const precioRaw = (formData.get("precio_actual") as string)?.trim();
+    const precio_actual =
+      precioRaw !== "" && precioRaw != null ? parseFloat(precioRaw) : null;
+
+    if (precio_actual !== null && (isNaN(precio_actual) || precio_actual < 0))
+      return { error: "El precio debe ser un número positivo." };
+
+    const { error } = await supabase
+      .from("inversiones")
+      .update({ precio_actual })
+      .eq("id", inversionId)
+      .eq("usuario_id", user.id);
+
+    if (error) {
+      console.error("Supabase actualizarPrecioActual:", error);
+      return { error: "No se pudo actualizar el precio. Intentá de nuevo." };
+    }
+
+    revalidatePath("/inversiones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
 // ── OBTENER CUENTAS (para selects en Client Components) ──────────────────────
 // Esta acción puede ser llamada desde componentes cliente cuando necesiten
 // cargar las cuentas de forma lazy (por ejemplo, al abrir un dialog).
