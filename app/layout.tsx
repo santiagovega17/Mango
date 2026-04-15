@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 
@@ -10,10 +10,13 @@ export const metadata: Metadata = {
     template: "%s | Mango",
   },
   description: "Gestión de finanzas personales e inversiones en ARS y USD.",
-  themeColor: "#121212",
   icons: {
     icon: "/favicon.ico",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#121212",
 };
 
 export default function RootLayout({
