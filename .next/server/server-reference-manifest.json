@@ -1,0 +1,54 @@
+{
+  "node": {
+    "6f8c0ee15ade22f23cd17a01ea1b01647541441b": {
+      "workers": {
+        "app/(app)/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Clib%5C%5Cactions.ts%22%2C%5B%22crearTransaccion%22%2C%22crearCuenta%22%2C%22obtenerCuentasAction%22%5D%5D%2C%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Capp%5C%5Cauth%5C%5Cactions.ts%22%2C%5B%22signIn%22%2C%22signUp%22%2C%22signOut%22%5D%5D%5D&__client_imported__=true!"
+      },
+      "layer": {
+        "app/(app)/page": "action-browser"
+      }
+    },
+    "88795740c8881bebc664e486d18f0b6a74144f78": {
+      "workers": {
+        "app/(app)/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Clib%5C%5Cactions.ts%22%2C%5B%22crearTransaccion%22%2C%22crearCuenta%22%2C%22obtenerCuentasAction%22%5D%5D%2C%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Capp%5C%5Cauth%5C%5Cactions.ts%22%2C%5B%22signIn%22%2C%22signUp%22%2C%22signOut%22%5D%5D%5D&__client_imported__=true!"
+      },
+      "layer": {
+        "app/(app)/page": "action-browser"
+      }
+    },
+    "942bc830c032f59e98e1e3867588cdaf95b826ed": {
+      "workers": {
+        "app/(app)/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Clib%5C%5Cactions.ts%22%2C%5B%22crearTransaccion%22%2C%22crearCuenta%22%2C%22obtenerCuentasAction%22%5D%5D%2C%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Capp%5C%5Cauth%5C%5Cactions.ts%22%2C%5B%22signIn%22%2C%22signUp%22%2C%22signOut%22%5D%5D%5D&__client_imported__=true!"
+      },
+      "layer": {
+        "app/(app)/page": "action-browser"
+      }
+    },
+    "39aa0d917ea64e3d6515145914e0199a6b97fdce": {
+      "workers": {
+        "app/(app)/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Clib%5C%5Cactions.ts%22%2C%5B%22crearTransaccion%22%2C%22crearCuenta%22%2C%22obtenerCuentasAction%22%5D%5D%2C%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Capp%5C%5Cauth%5C%5Cactions.ts%22%2C%5B%22signIn%22%2C%22signUp%22%2C%22signOut%22%5D%5D%5D&__client_imported__=true!"
+      },
+      "layer": {
+        "app/(app)/page": "action-browser"
+      }
+    },
+    "764f129566ddcb88e8d8de5aa3f1d3de1bdfabb8": {
+      "workers": {
+        "app/(app)/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Clib%5C%5Cactions.ts%22%2C%5B%22crearTransaccion%22%2C%22crearCuenta%22%2C%22obtenerCuentasAction%22%5D%5D%2C%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Capp%5C%5Cauth%5C%5Cactions.ts%22%2C%5B%22signIn%22%2C%22signUp%22%2C%22signOut%22%5D%5D%5D&__client_imported__=true!"
+      },
+      "layer": {
+        "app/(app)/page": "action-browser"
+      }
+    },
+    "898b2ef7639ca9cae3b0139e067aa214fb33ffa7": {
+      "workers": {
+        "app/(app)/page": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Clib%5C%5Cactions.ts%22%2C%5B%22crearTransaccion%22%2C%22crearCuenta%22%2C%22obtenerCuentasAction%22%5D%5D%2C%5B%22C%3A%5C%5CUsers%5C%5Csanti%5C%5COneDrive%5C%5CTrabajo%5C%5CMango%5C%5Capp%5C%5Cauth%5C%5Cactions.ts%22%2C%5B%22signIn%22%2C%22signUp%22%2C%22signOut%22%5D%5D%5D&__client_imported__=true!"
+      },
+      "layer": {
+        "app/(app)/page": "action-browser"
+      }
+    }
+  },
+  "edge": {},
+  "encryptionKey": "v6JZ0OBNpZ26ENTo5yBF/bFC/dOw6i6y58cY2ZBEdlY="
+}
