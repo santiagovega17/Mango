@@ -54,7 +54,7 @@ export async function signIn(formData: FormData): Promise<AuthResult> {
     return { error: traducirError(error.message) };
   }
 
-  redirect("/");
+  redirect("/dashboard");
 }
 
 // ---------------------------------------------------------------------------

@@ -1,15 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// Rutas que requieren autenticación (prefijos)
-const PROTECTED_PREFIXES = ["/transacciones", "/inversiones", "/configuracion"];
-// Rutas protegidas exactas
-const PROTECTED_EXACT = ["/"];
-// Rutas de autenticación (redirigen al dashboard si ya está logueado)
+// Rutas protegidas — redirigen a /login si no hay sesión
+const PROTECTED_PREFIXES = [
+  "/dashboard",
+  "/transacciones",
+  "/inversiones",
+  "/configuracion",
+];
+// Rutas de autenticación — redirigen a /dashboard si ya está logueado
 const AUTH_ROUTES = ["/login"];
 
 function isProtected(pathname: string): boolean {
-  if (PROTECTED_EXACT.includes(pathname)) return true;
   return PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
@@ -63,7 +65,7 @@ export async function middleware(request: NextRequest) {
   // Usuario YA autenticado intentando acceder a /login → Dashboard
   if (user && isAuthRoute(pathname)) {
     const dashboardUrl = request.nextUrl.clone();
-    dashboardUrl.pathname = "/";
+    dashboardUrl.pathname = "/dashboard";
     dashboardUrl.search = "";
     return NextResponse.redirect(dashboardUrl);
   }

@@ -61,7 +61,7 @@ export async function crearCuenta(formData: FormData): Promise<ActionResult> {
       return { error: "No se pudo crear la cuenta. Intentá de nuevo." };
     }
 
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     revalidatePath("/configuracion");
     return { success: true };
   } catch (e) {
@@ -87,7 +87,7 @@ export async function eliminarCuenta(cuentaId: string): Promise<ActionResult> {
       return { error: "No se pudo eliminar la cuenta. Intentá de nuevo." };
     }
 
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     revalidatePath("/configuracion");
     return { success: true };
   } catch (e) {
@@ -121,7 +121,7 @@ export async function actualizarPerfil(
     }
 
     revalidatePath("/configuracion");
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error inesperado." };
@@ -177,7 +177,7 @@ export async function crearTransaccion(
       return { error: "No se pudo registrar la transacción. Intentá de nuevo." };
     }
 
-    revalidatePath("/");
+    revalidatePath("/dashboard");
     revalidatePath("/transacciones");
     return { success: true };
   } catch (e) {

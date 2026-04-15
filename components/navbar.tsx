@@ -22,7 +22,7 @@ import { signOut } from "@/app/auth/actions";
 import { NuevaTransaccionDialog } from "@/components/nueva-transaccion-dialog";
 
 const navLinks = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transacciones", label: "Transacciones", icon: ArrowLeftRight },
   { href: "/inversiones", label: "Inversiones", icon: TrendingUp },
   { href: "/configuracion", label: "Configuración", icon: Settings },
@@ -62,7 +62,7 @@ export function Navbar({ userEmail, userName }: NavbarProps) {
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <Link
-            href="/"
+            href="/dashboard"
             className="flex items-center gap-2 select-none"
             onClick={() => setMobileOpen(false)}
           >
@@ -75,8 +75,7 @@ export function Navbar({ userEmail, userName }: NavbarProps) {
           {/* Nav Desktop */}
           <nav className="hidden md:flex items-center gap-1">
             {navLinks.map(({ href, label, icon: Icon }) => {
-              const isActive =
-                href === "/" ? pathname === "/" : pathname.startsWith(href);
+              const isActive = pathname.startsWith(href);
               return (
                 <Link
                   key={href}
@@ -197,8 +196,7 @@ export function Navbar({ userEmail, userName }: NavbarProps) {
             </div>
 
             {navLinks.map(({ href, label, icon: Icon }) => {
-              const isActive =
-                href === "/" ? pathname === "/" : pathname.startsWith(href);
+              const isActive = pathname.startsWith(href);
               return (
                 <Link
                   key={href}
