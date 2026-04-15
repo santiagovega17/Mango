@@ -62,6 +62,66 @@ export async function crearCuenta(formData: FormData): Promise<ActionResult> {
     }
 
     revalidatePath("/");
+    revalidatePath("/configuracion");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+// ── ELIMINAR CUENTA ───────────────────────────────────────────────────────────
+
+export async function eliminarCuenta(cuentaId: string): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    // Verificamos que la cuenta pertenezca al usuario antes de eliminar
+    const { error } = await supabase
+      .from("cuentas")
+      .delete()
+      .eq("id", cuentaId)
+      .eq("usuario_id", user.id);
+
+    if (error) {
+      console.error("Supabase eliminarCuenta:", error);
+      return { error: "No se pudo eliminar la cuenta. Intentá de nuevo." };
+    }
+
+    revalidatePath("/");
+    revalidatePath("/configuracion");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+// ── ACTUALIZAR PERFIL ─────────────────────────────────────────────────────────
+
+export async function actualizarPerfil(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const nombre = required(formData.get("nombre"), "Nombre");
+    const moneda_principal = (formData.get("moneda_principal") as string) || "ARS";
+
+    if (!["ARS", "USD"].includes(moneda_principal)) {
+      return { error: "Moneda inválida." };
+    }
+
+    const { error } = await supabase
+      .from("usuarios")
+      .update({ nombre, moneda_principal })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("Supabase actualizarPerfil:", error);
+      return { error: "No se pudo actualizar el perfil. Intentá de nuevo." };
+    }
+
+    revalidatePath("/configuracion");
+    revalidatePath("/");
     return { success: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error inesperado." };
