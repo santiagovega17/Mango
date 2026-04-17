@@ -216,22 +216,32 @@ export async function crearInversion(
     if (!["ARS", "USD"].includes(moneda))
       return { error: "La moneda debe ser ARS o USD." };
 
-    const { error } = await supabase.from("inversiones").insert({
+    const { error: insertError } = await supabase.from("inversiones").insert({
       usuario_id: user.id,
       nombre_activo,
       tipo_activo,
       moneda,
       cantidad,
       precio_compra,
-      precio_actual,
+      precio_actual, // null si no se proporcionó — columna ya existe en la DB
     });
 
-    if (error) {
-      console.error("Supabase crearInversion:", error);
-      return { error: "No se pudo guardar la inversión. Intentá de nuevo." };
+    if (insertError) {
+      const detalle = [insertError.code, insertError.message, insertError.details]
+        .filter(Boolean)
+        .join(" — ");
+      console.error("❌ Supabase crearInversion:", {
+        code: insertError.code,
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        payload: { usuario_id: user.id, nombre_activo, tipo_activo },
+      });
+      return { error: `Error al guardar: ${detalle}` };
     }
 
     revalidatePath("/inversiones");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error inesperado." };
@@ -258,6 +268,7 @@ export async function eliminarInversion(
     }
 
     revalidatePath("/inversiones");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error inesperado." };
@@ -292,6 +303,168 @@ export async function actualizarPrecioActual(
     }
 
     revalidatePath("/inversiones");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+// ── EDITAR TRANSACCIÓN ────────────────────────────────────────────────────────
+
+export async function editarTransaccion(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const transaccionId = required(formData.get("transaccion_id"), "ID");
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta");
+    const tipoRaw = required(formData.get("tipo"), "Tipo");
+    const moneda = required(formData.get("moneda"), "Moneda") as "ARS" | "USD";
+    const montoRaw = required(formData.get("monto"), "Monto");
+    const descripcion =
+      (formData.get("descripcion") as string)?.trim() || null;
+    const fechaRaw = (formData.get("fecha") as string)?.trim();
+    const categoria_id =
+      (formData.get("categoria_id") as string)?.trim() || null;
+
+    const monto = parseFloat(montoRaw);
+    if (isNaN(monto) || monto <= 0)
+      return { error: "El monto debe ser mayor a 0." };
+
+    if (!["ingreso", "egreso", "transferencia"].includes(tipoRaw))
+      return { error: "Tipo inválido." };
+
+    if (!["ARS", "USD"].includes(moneda))
+      return { error: "Moneda inválida." };
+
+    const fecha = fechaRaw || new Date().toISOString().split("T")[0];
+
+    const { error } = await supabase
+      .from("transacciones")
+      .update({
+        cuenta_id,
+        tipo: tipoRaw as "ingreso" | "egreso" | "transferencia",
+        moneda,
+        monto,
+        descripcion,
+        fecha,
+        categoria_id: categoria_id || null,
+      })
+      .eq("id", transaccionId)
+      .eq("usuario_id", user.id);
+
+    if (error) {
+      console.error("Supabase editarTransaccion:", error);
+      return { error: "No se pudo editar la transacción." };
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+// ── ELIMINAR TRANSACCIÓN ──────────────────────────────────────────────────────
+
+export async function eliminarTransaccion(
+  transaccionId: string
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const { error } = await supabase
+      .from("transacciones")
+      .delete()
+      .eq("id", transaccionId)
+      .eq("usuario_id", user.id);
+
+    if (error) {
+      console.error("Supabase eliminarTransaccion:", error);
+      return { error: "No se pudo eliminar la transacción." };
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+// ── CREAR TRANSFERENCIA ───────────────────────────────────────────────────────
+// Soporta transferencias en la misma moneda y conversiones entre ARS↔USD.
+// Genera siempre dos registros: un egreso en origen y un ingreso en destino,
+// cada uno con su propia moneda y monto.
+
+export async function crearTransferencia(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const cuentaOrigenId = required(formData.get("cuenta_origen_id"), "Cuenta origen");
+    const cuentaDestinoId = required(formData.get("cuenta_destino_id"), "Cuenta destino");
+    const monedaOrigen = required(formData.get("moneda_origen"), "Moneda origen") as "ARS" | "USD";
+    const monedaDestino = required(formData.get("moneda_destino"), "Moneda destino") as "ARS" | "USD";
+    const montoOrigenRaw = required(formData.get("monto_origen"), "Monto origen");
+    const montoDestinoRaw = required(formData.get("monto_destino"), "Monto destino");
+    const descripcion = (formData.get("descripcion") as string)?.trim() || "Transferencia";
+    const fechaRaw = (formData.get("fecha") as string)?.trim();
+
+    if (cuentaOrigenId === cuentaDestinoId)
+      return { error: "La cuenta origen y destino no pueden ser la misma." };
+
+    const montoOrigen = parseFloat(montoOrigenRaw);
+    if (isNaN(montoOrigen) || montoOrigen <= 0)
+      return { error: "El monto a retirar debe ser mayor a 0." };
+
+    const montoDestino = parseFloat(montoDestinoRaw);
+    if (isNaN(montoDestino) || montoDestino <= 0)
+      return { error: "El monto a depositar debe ser mayor a 0." };
+
+    if (!["ARS", "USD"].includes(monedaOrigen) || !["ARS", "USD"].includes(monedaDestino))
+      return { error: "Moneda inválida." };
+
+    const fecha = fechaRaw || new Date().toISOString().split("T")[0];
+    const esMultimoneda = monedaOrigen !== monedaDestino;
+    const descripcionFinal = esMultimoneda
+      ? descripcion || (monedaOrigen === "ARS" ? "Compra de USD" : "Venta de USD")
+      : descripcion;
+
+    const { error } = await supabase.from("transacciones").insert([
+      {
+        usuario_id: user.id,
+        cuenta_id: cuentaOrigenId,
+        tipo: "egreso" as const,
+        moneda: monedaOrigen,
+        monto: montoOrigen,
+        descripcion: descripcionFinal,
+        fecha,
+        categoria_id: null,
+      },
+      {
+        usuario_id: user.id,
+        cuenta_id: cuentaDestinoId,
+        tipo: "ingreso" as const,
+        moneda: monedaDestino,
+        monto: montoDestino,
+        descripcion: descripcionFinal,
+        fecha,
+        categoria_id: null,
+      },
+    ]);
+
+    if (error) {
+      console.error("Supabase crearTransferencia:", error);
+      return { error: "No se pudo registrar la transferencia." };
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
     return { success: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error inesperado." };
@@ -301,6 +474,23 @@ export async function actualizarPrecioActual(
 // ── OBTENER CUENTAS (para selects en Client Components) ──────────────────────
 // Esta acción puede ser llamada desde componentes cliente cuando necesiten
 // cargar las cuentas de forma lazy (por ejemplo, al abrir un dialog).
+
+// ── OBTENER CATEGORÍAS (para selects en Client Components) ───────────────────
+
+export async function obtenerCategoriasAction(): Promise<
+  { id: string; nombre: string; color: string | null }[]
+> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("categorias")
+      .select("id, nombre, color")
+      .order("nombre", { ascending: true });
+    return (data ?? []) as { id: string; nombre: string; color: string | null }[];
+  } catch {
+    return [];
+  }
+}
 
 export async function obtenerCuentasAction(): Promise<CuentaResumen[]> {
   try {

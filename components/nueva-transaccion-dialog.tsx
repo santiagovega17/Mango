@@ -7,9 +7,9 @@ import {
   ArrowDownCircle,
   Loader2,
   AlertCircle,
-  CheckCircle2,
   RefreshCw,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -29,17 +29,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { crearTransaccion, obtenerCuentasAction } from "@/lib/actions";
+import { CategoriaCombobox } from "@/components/categoria-combobox";
+import {
+  crearTransaccion,
+  obtenerCuentasAction,
+  obtenerCategoriasAction,
+} from "@/lib/actions";
 import type { CuentaResumen } from "@/lib/data";
 
 type TipoTx = "ingreso" | "egreso";
 
 interface Props {
-  /** Cuentas pre-cargadas desde el servidor (evita el fetch lazy) */
   cuentasIniciales?: CuentaResumen[];
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  /** Si es true, muestra solo el botón "+ Nuevo" sin texto */
   compact?: boolean;
 }
 
@@ -58,50 +61,69 @@ export function NuevaTransaccionDialog({
     else setInternalOpen(value);
   }
 
-  // ── Estado del formulario ──────────────────────────────────────────────────
   const [tipo, setTipo] = useState<TipoTx>("egreso");
   const [moneda, setMoneda] = useState<"ARS" | "USD">("ARS");
   const [cuentaId, setCuentaId] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
 
-  // ── Cuentas (lazy load si no se proveen inicial) ───────────────────────────
+  // ── Cuentas ───────────────────────────────────────────────────────────────
   const [cuentas, setCuentas] = useState<CuentaResumen[]>(
     cuentasIniciales ?? []
   );
   const [loadingCuentas, setLoadingCuentas] = useState(false);
   const cuentasCargadas = useRef(!!cuentasIniciales?.length);
 
-  async function cargarCuentas() {
-    setLoadingCuentas(true);
-    const data = await obtenerCuentasAction();
-    setCuentas(data);
-    cuentasCargadas.current = true;
-    if (data.length > 0 && !cuentaId) setCuentaId(data[0].id);
-    setLoadingCuentas(false);
+  // ── Categorías ────────────────────────────────────────────────────────────
+  const [categorias, setCategorias] = useState<
+    { id: string; nombre: string; color: string | null }[]
+  >([]);
+  const categoriasCargadas = useRef(false);
+
+  async function cargarDatos() {
+    const promises: Promise<void>[] = [];
+
+    if (!cuentasCargadas.current) {
+      setLoadingCuentas(true);
+      promises.push(
+        obtenerCuentasAction().then((data) => {
+          setCuentas(data);
+          cuentasCargadas.current = true;
+          if (data.length > 0) setCuentaId(data[0].id);
+          setLoadingCuentas(false);
+        })
+      );
+    }
+
+    if (!categoriasCargadas.current) {
+      promises.push(
+        obtenerCategoriasAction().then((data) => {
+          setCategorias(data);
+          categoriasCargadas.current = true;
+        })
+      );
+    }
+
+    await Promise.all(promises);
   }
 
-  // Cuando se abre el dialog por primera vez sin cuentas pre-cargadas
   useEffect(() => {
-    if (open && !cuentasCargadas.current) {
-      cargarCuentas();
-    }
-    if (open && cuentas.length > 0 && !cuentaId) {
-      setCuentaId(cuentas[0].id);
+    if (open) {
+      cargarDatos();
+      if (cuentas.length > 0 && !cuentaId) setCuentaId(cuentas[0].id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // ── Reset ──────────────────────────────────────────────────────────────────
   function resetForm() {
     formRef.current?.reset();
     setTipo("egreso");
     setMoneda("ARS");
     setCuentaId(cuentas[0]?.id ?? "");
+    setCategoriaId("");
     setError(null);
-    setSuccess(false);
   }
 
   function handleOpenChange(val: boolean) {
@@ -109,7 +131,6 @@ export function NuevaTransaccionDialog({
     setOpen(val);
   }
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -123,26 +144,29 @@ export function NuevaTransaccionDialog({
     formData.set("tipo", tipo);
     formData.set("moneda", moneda);
     formData.set("cuenta_id", cuentaId);
+    if (categoriaId) formData.set("categoria_id", categoriaId);
 
     startTransition(async () => {
       const result = await crearTransaccion(formData);
       if (result.error) {
         setError(result.error);
+        toast.error(result.error);
       } else {
-        setSuccess(true);
-        setTimeout(() => handleOpenChange(false), 900);
+        toast.success(
+          tipo === "ingreso"
+            ? "¡Ingreso registrado!"
+            : "¡Egreso registrado!"
+        );
+        handleOpenChange(false);
       }
     });
   }
 
-  // ── Cuenta seleccionada ────────────────────────────────────────────────────
   const cuentaSeleccionada = cuentas.find((c) => c.id === cuentaId);
-
   const hoy = new Date().toISOString().split("T")[0];
 
   return (
     <>
-      {/* Trigger por defecto */}
       {!isControlled && (
         <Button
           onClick={() => setOpen(true)}
@@ -166,7 +190,6 @@ export function NuevaTransaccionDialog({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Sin cuentas creadas */}
           {!loadingCuentas && cuentas.length === 0 && (
             <Alert variant="warning" className="mt-2">
               <AlertCircle className="h-4 w-4" />
@@ -178,12 +201,8 @@ export function NuevaTransaccionDialog({
             </Alert>
           )}
 
-          <form
-            ref={formRef}
-            onSubmit={handleSubmit}
-            className="space-y-4 mt-1"
-          >
-            {/* Selector de tipo: Ingreso / Egreso */}
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-4 mt-1">
+            {/* Tipo */}
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Tipo
@@ -218,11 +237,10 @@ export function NuevaTransaccionDialog({
 
             {/* Monto + Moneda */}
             <div className="space-y-2">
-              <Label htmlFor="tx-monto" className="text-xs uppercase tracking-wider text-muted-foreground">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Monto
               </Label>
               <div className="flex gap-2">
-                {/* Toggle de moneda integrado */}
                 <div className="flex rounded-lg border border-border overflow-hidden flex-shrink-0">
                   {(["ARS", "USD"] as const).map((m) => (
                     <button
@@ -240,7 +258,6 @@ export function NuevaTransaccionDialog({
                   ))}
                 </div>
                 <Input
-                  id="tx-monto"
                   name="monto"
                   type="number"
                   min="0.01"
@@ -271,7 +288,7 @@ export function NuevaTransaccionDialog({
                   <SelectValue
                     placeholder={
                       loadingCuentas
-                        ? "Cargando cuentas…"
+                        ? "Cargando…"
                         : cuentas.length === 0
                         ? "Sin cuentas creadas"
                         : "Seleccioná una cuenta…"
@@ -291,22 +308,41 @@ export function NuevaTransaccionDialog({
                   ))}
                 </SelectContent>
               </Select>
-              {cuentaSeleccionada && cuentaSeleccionada.moneda !== moneda && (
-                <p className="text-xs text-amber-400 flex items-center gap-1.5">
-                  <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                  La cuenta está en {cuentaSeleccionada.moneda} pero la transacción será en {moneda}.
-                </p>
-              )}
+              {cuentaSeleccionada &&
+                cuentaSeleccionada.moneda !== moneda && (
+                  <p className="text-xs text-amber-400 flex items-center gap-1.5">
+                    <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                    La cuenta está en {cuentaSeleccionada.moneda} pero la
+                    transacción será en {moneda}.
+                  </p>
+                )}
+            </div>
+
+            {/* Categoría */}
+            <div className="space-y-2">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Categoría{" "}
+                <span className="text-muted-foreground/60 normal-case">
+                  (opcional)
+                </span>
+              </Label>
+              <CategoriaCombobox
+                categorias={categorias}
+                value={categoriaId}
+                onChange={setCategoriaId}
+                disabled={isPending}
+              />
             </div>
 
             {/* Descripción */}
             <div className="space-y-2">
-              <Label htmlFor="tx-descripcion" className="text-xs uppercase tracking-wider text-muted-foreground">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Descripción{" "}
-                <span className="text-muted-foreground/60 normal-case">(opcional)</span>
+                <span className="text-muted-foreground/60 normal-case">
+                  (opcional)
+                </span>
               </Label>
               <Input
-                id="tx-descripcion"
                 name="descripcion"
                 placeholder="Ej: Supermercado, Netflix, Sueldo…"
                 className="bg-secondary/50 border-border/80 h-11"
@@ -315,11 +351,10 @@ export function NuevaTransaccionDialog({
 
             {/* Fecha */}
             <div className="space-y-2">
-              <Label htmlFor="tx-fecha" className="text-xs uppercase tracking-wider text-muted-foreground">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
                 Fecha
               </Label>
               <Input
-                id="tx-fecha"
                 name="fecha"
                 type="date"
                 defaultValue={hoy}
@@ -328,17 +363,10 @@ export function NuevaTransaccionDialog({
               />
             </div>
 
-            {/* Feedback */}
             {error && (
               <Alert variant="destructive" className="py-2.5">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            {success && (
-              <Alert variant="success" className="py-2.5">
-                <CheckCircle2 className="h-4 w-4" />
-                <AlertDescription>¡Transacción registrada!</AlertDescription>
               </Alert>
             )}
 
@@ -353,7 +381,7 @@ export function NuevaTransaccionDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={isPending || success || cuentas.length === 0}
+                disabled={isPending || cuentas.length === 0}
                 className={`gap-2 ${
                   tipo === "ingreso"
                     ? "bg-emerald-600 hover:bg-emerald-700 text-white"

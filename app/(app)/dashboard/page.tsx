@@ -12,12 +12,10 @@ import { Badge } from "@/components/ui/badge";
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
-  BadgeDollarSign,
-  ArrowUpRight,
-  ArrowDownRight,
   Wallet,
   PlusCircle,
+  PieChart,
+  Scale,
 } from "lucide-react";
 import { NuevaCuentaDialog } from "@/components/nueva-cuenta-dialog";
 import { NuevaTransaccionDialog } from "@/components/nueva-transaccion-dialog";
@@ -31,8 +29,13 @@ export default async function DashboardPage() {
   const data = await getDashboardData(user!.id);
 
   const {
-    saldoTotalARS,
-    saldoTotalUSD,
+    saldoDisponibleARS,
+    saldoDisponibleUSD,
+    totalInvertidoARS,
+    totalInvertidoUSD,
+    totalInvertidoEnARS,
+    patrimonioNetoEnARS,
+    cotizacionBlueVenta,
     ingresosARS,
     ingresosUSD,
     egresosARS,
@@ -43,35 +46,14 @@ export default async function DashboardPage() {
   } = data;
 
   const tieneCuentas = cuentas.length > 0;
-  const totalIngresos = ingresosARS + ingresosUSD * 1; // simplificado; en producción usaría tipo de cambio
-  const totalEgresos = egresosARS + egresosUSD;
-  const ahorroNeto = totalIngresos - totalEgresos;
-  const pctAhorro =
-    totalIngresos > 0
-      ? ((ahorroNeto / totalIngresos) * 100).toFixed(1)
+  const ahorroNetoARS = ingresosARS - egresosARS;
+  const ahorroNetoUSD = ingresosUSD - egresosUSD;
+  const pctAhorroARS =
+    ingresosARS > 0
+      ? ((ahorroNetoARS / ingresosARS) * 100).toFixed(1)
       : "0.0";
 
-  const summaryCards = [
-    {
-      id: "saldo-ars",
-      title: "Saldo Total ARS",
-      description: "Pesos argentinos",
-      value: formatCurrency(saldoTotalARS, "ARS"),
-      icon: BadgeDollarSign,
-      accentColor: "text-sky-400",
-      accentBg: "bg-sky-400/10",
-      borderHover: "hover:border-sky-400/30",
-    },
-    {
-      id: "saldo-usd",
-      title: "Saldo Total USD",
-      description: "Dólares estadounidenses",
-      value: formatCurrency(saldoTotalUSD, "USD"),
-      icon: DollarSign,
-      accentColor: "text-emerald-400",
-      accentBg: "bg-emerald-400/10",
-      borderHover: "hover:border-emerald-400/30",
-    },
+  const mesCards = [
     {
       id: "ingresos",
       title: "Ingresos del Mes",
@@ -82,7 +64,6 @@ export default async function DashboardPage() {
       accentColor: "text-emerald-400",
       accentBg: "bg-emerald-400/10",
       borderHover: "hover:border-emerald-400/30",
-      positive: true,
     },
     {
       id: "egresos",
@@ -94,7 +75,6 @@ export default async function DashboardPage() {
       accentColor: "text-rose-400",
       accentBg: "bg-rose-400/10",
       borderHover: "hover:border-rose-400/30",
-      positive: false,
     },
   ];
 
@@ -141,42 +121,166 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      {/* ── Cards de resumen ────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {summaryCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <Card
-              key={card.id}
-              className={`border-border transition-all duration-200 ${card.borderHover} cursor-default`}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardDescription className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    {card.title}
+      {/* ── 5 tarjetas de resumen (misma fila en xl) ───────────────────────── */}
+      {tieneCuentas && (
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          {/* Liquidez */}
+          <Card className="min-w-0 border-sky-500/25 bg-gradient-to-br from-sky-500/[0.07] to-transparent p-4 shadow-sm shadow-sky-900/10">
+            <CardHeader className="p-0 pb-2 space-y-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <CardDescription className="text-[10px] font-semibold uppercase tracking-wider text-sky-300/90 leading-tight">
+                    Saldo disponible
                   </CardDescription>
-                  <div className={`rounded-lg p-2 ${card.accentBg}`}>
-                    <Icon className={`h-4 w-4 ${card.accentColor}`} />
-                  </div>
+                  <CardTitle className="text-sm font-semibold text-foreground mt-0.5 truncate">
+                    Liquidez
+                  </CardTitle>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-1.5">
-                <p className="text-2xl font-bold tracking-tight text-foreground tabular-nums">
-                  {card.value}
+                <div className="rounded-lg bg-sky-500/15 p-1.5 shrink-0">
+                  <Wallet className="h-4 w-4 text-sky-400" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 space-y-2">
+              <div className="min-w-0">
+                <p className="text-[10px] text-muted-foreground leading-tight truncate mb-0.5">
+                  Pesos · efectivo, banco, billetera
                 </p>
-                {card.subValue && (
-                  <p className={`text-xs font-medium ${card.accentColor}`}>
-                    {card.subValue}
+                <p className="text-lg font-bold tabular-nums tracking-tight text-foreground break-all">
+                  {formatCurrency(saldoDisponibleARS, "ARS")}
+                </p>
+              </div>
+              <div className="h-px bg-border/60" />
+              <div className="min-w-0">
+                <p className="text-[10px] text-muted-foreground leading-tight mb-0.5">USD</p>
+                <p className="text-base font-bold tabular-nums tracking-tight text-emerald-400/95 break-all">
+                  {formatCurrency(saldoDisponibleUSD, "USD")}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Total invertido */}
+          <Card className="min-w-0 border-violet-500/20 bg-gradient-to-br from-violet-500/[0.06] to-transparent p-4">
+            <CardHeader className="p-0 pb-2 space-y-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <CardDescription className="text-[10px] font-semibold uppercase tracking-wider text-violet-300/80 leading-tight">
+                    Cartera
+                  </CardDescription>
+                  <CardTitle className="text-sm font-semibold text-foreground mt-0.5 truncate">
+                    Total invertido
+                  </CardTitle>
+                </div>
+                <div className="rounded-lg bg-violet-500/15 p-1.5 shrink-0">
+                  <PieChart className="h-4 w-4 text-violet-400" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 space-y-1.5 min-w-0">
+              {totalInvertidoEnARS != null ? (
+                <>
+                  <p className="text-lg font-bold tabular-nums tracking-tight text-foreground break-all">
+                    {formatCurrency(totalInvertidoEnARS, "ARS")}
                   </p>
-                )}
-                <p className="text-xs text-muted-foreground capitalize">
-                  {card.description}
+                  <p className="text-[10px] text-muted-foreground leading-tight line-clamp-3">
+                    Estimado (× precio actual o compra) · blue venta
+                    {cotizacionBlueVenta != null && (
+                      <span className="text-violet-300/90 font-medium">
+                        {" "}
+                        (${cotizacionBlueVenta.toLocaleString("es-AR")})
+                      </span>
+                    )}
+                    .
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-0.5 min-w-0">
+                    <p className="text-base font-bold tabular-nums break-all">
+                      {formatCurrency(totalInvertidoARS, "ARS")}
+                    </p>
+                    <p className="text-sm font-bold tabular-nums text-emerald-400/90 break-all">
+                      {formatCurrency(totalInvertidoUSD, "USD")}
+                    </p>
+                  </div>
+                  <p className="text-[10px] text-amber-400/90 leading-tight line-clamp-2">
+                    Sin cotización no hay total único en ARS.
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Patrimonio neto */}
+          <Card className="min-w-0 border-emerald-500/15 bg-secondary/20 p-4">
+            <CardHeader className="p-0 pb-2 space-y-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <CardTitle className="text-sm font-semibold text-foreground truncate">
+                    Patrimonio neto
+                  </CardTitle>
+                  <CardDescription className="text-[10px] leading-tight text-muted-foreground mt-0.5 line-clamp-2">
+                    Liquidez + inversiones (ARS unificado)
+                  </CardDescription>
+                </div>
+                <div className="rounded-lg bg-emerald-500/10 p-1.5 shrink-0">
+                  <Scale className="h-4 w-4 text-emerald-400" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 min-w-0">
+              {patrimonioNetoEnARS != null ? (
+                <p className="text-lg font-bold tabular-nums tracking-tight text-emerald-400 break-all">
+                  {formatCurrency(patrimonioNetoEnARS, "ARS")}
                 </p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+              ) : (
+                <div className="space-y-1 min-w-0">
+                  <p className="text-xs text-muted-foreground leading-tight">No disponible</p>
+                  <p className="text-[10px] text-muted-foreground/80 leading-tight line-clamp-3">
+                    Falta cotización blue para unificar USD.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Ingresos y Egresos del mes */}
+          {mesCards.map((card) => {
+            const Icon = card.icon;
+            return (
+              <Card
+                key={card.id}
+                className={`min-w-0 p-4 border-border transition-all duration-200 ${card.borderHover} cursor-default`}
+              >
+                <CardHeader className="p-0 pb-2 space-y-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardDescription className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground leading-tight line-clamp-2 pr-1">
+                      {card.title}
+                    </CardDescription>
+                    <div className={`rounded-lg p-1.5 shrink-0 ${card.accentBg}`}>
+                      <Icon className={`h-4 w-4 ${card.accentColor}`} />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 space-y-1 min-w-0">
+                  <p className="text-lg font-bold tracking-tight text-foreground tabular-nums break-all">
+                    {card.value}
+                  </p>
+                  {card.subValue && (
+                    <p className={`text-[10px] font-medium truncate ${card.accentColor}`}>
+                      {card.subValue}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-muted-foreground capitalize leading-tight truncate">
+                    {card.description}
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── Contenido principal ─────────────────────────────────────────────── */}
       {tieneCuentas && (
@@ -322,22 +426,27 @@ export default async function DashboardPage() {
 
                   {/* Ahorro neto */}
                   <div className="rounded-lg border border-border bg-secondary/50 p-4 space-y-1.5">
-                    <p className="text-xs text-muted-foreground">Ahorro neto</p>
+                    <p className="text-xs text-muted-foreground">Ahorro neto ARS</p>
                     <p
                       className={`text-xl font-bold tabular-nums ${
-                        ahorroNeto >= 0 ? "text-emerald-400" : "text-rose-400"
+                        ahorroNetoARS >= 0 ? "text-emerald-400" : "text-rose-400"
                       }`}
                     >
-                      {ahorroNeto >= 0 ? "" : "-"}
-                      {formatCurrency(Math.abs(ahorroNeto), "ARS")}
+                      {ahorroNetoARS >= 0 ? "+" : ""}
+                      {formatCurrency(ahorroNetoARS, "ARS")}
                     </p>
                     <Badge
-                      variant={ahorroNeto >= 0 ? "success" : "danger"}
+                      variant={ahorroNetoARS >= 0 ? "success" : "danger"}
                       className="text-xs"
                     >
-                      {ahorroNeto >= 0 ? "+" : ""}
-                      {pctAhorro}% del total ingresado
+                      {ahorroNetoARS >= 0 ? "+" : ""}
+                      {pctAhorroARS}% del total ingresado
                     </Badge>
+                    {ahorroNetoUSD !== 0 && (
+                      <p className={`text-xs font-medium ${ahorroNetoUSD >= 0 ? "text-emerald-400/70" : "text-rose-400/70"}`}>
+                        USD: {ahorroNetoUSD >= 0 ? "+" : ""}{formatCurrency(ahorroNetoUSD, "USD")}
+                      </p>
+                    )}
                   </div>
                 </>
               )}

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Trash2, Loader2, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,7 +30,9 @@ export function EliminarCuentaButton({ cuentaId, cuentaNombre }: Props) {
       const result = await eliminarCuenta(cuentaId);
       if (result.error) {
         setError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success(`Cuenta "${cuentaNombre}" eliminada.`);
         setOpen(false);
       }
     });

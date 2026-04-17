@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
-import { PlusCircle, Loader2, TrendingUp } from "lucide-react";
+import { useRef, useState, useTransition, useMemo } from "react";
+import { PlusCircle, Loader2, TrendingUp, Calculator } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,23 +49,56 @@ export function NuevaInversionDialog({
   const [error, setError] = useState<string | null>(null);
   const [moneda, setMoneda] = useState<"ARS" | "USD">("USD");
   const [tipoActivo, setTipoActivo] = useState("");
+  const [cantidad, setCantidad] = useState("");
+  const [montoCompraTotal, setMontoCompraTotal] = useState("");
+  const [montoActualTotal, setMontoActualTotal] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Precios unitarios calculados en tiempo real
+  const { precioUnitarioCompra, precioUnitarioActual } = useMemo(() => {
+    const q = parseFloat(cantidad);
+    const valido = q > 0;
+    const tc = parseFloat(montoCompraTotal);
+    const ta = parseFloat(montoActualTotal);
+    return {
+      precioUnitarioCompra: valido && tc > 0 ? tc / q : null,
+      precioUnitarioActual: valido && ta > 0 ? ta / q : null,
+    };
+  }, [cantidad, montoCompraTotal, montoActualTotal]);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
+
+    if (!precioUnitarioCompra || precioUnitarioCompra <= 0) {
+      setError("Ingresá una cantidad y un monto total invertido válidos.");
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
     formData.set("moneda", moneda);
     formData.set("tipo_activo", tipoActivo);
+    // Persistir precios unitarios, no los totales
+    formData.set("precio_compra", String(precioUnitarioCompra));
+    if (precioUnitarioActual) {
+      formData.set("precio_actual", String(precioUnitarioActual));
+    } else {
+      formData.delete("precio_actual");
+    }
 
     startTransition(async () => {
       const result = await crearInversion(formData);
       if (result.error) {
         setError(result.error);
+        toast.error(result.error);
       } else {
+        toast.success("Inversión guardada en la cartera.");
         formRef.current?.reset();
         setMoneda("USD");
         setTipoActivo("");
+        setCantidad("");
+        setMontoCompraTotal("");
+        setMontoActualTotal("");
         setOpen(false);
       }
     });
@@ -75,6 +109,9 @@ export function NuevaInversionDialog({
       setError(null);
       setMoneda("USD");
       setTipoActivo("");
+      setCantidad("");
+      setMontoCompraTotal("");
+      setMontoActualTotal("");
       formRef.current?.reset();
     }
     setOpen(v);
@@ -157,55 +194,134 @@ export function NuevaInversionDialog({
             </div>
           </div>
 
-          {/* Cantidad + Precio de compra */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="cantidad">Cantidad</Label>
-              <Input
-                id="cantidad"
-                name="cantidad"
-                type="number"
-                min="0"
-                step="any"
-                placeholder="1"
-                required
-                disabled={isPending}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="precio_compra">
-                Precio de compra ({moneda})
-              </Label>
-              <Input
-                id="precio_compra"
-                name="precio_compra"
-                type="number"
-                min="0"
-                step="any"
-                placeholder="0.00"
-                required
-                disabled={isPending}
-              />
-            </div>
-          </div>
-
-          {/* Precio actual (opcional) */}
+          {/* Cantidad (divisor compartido) */}
           <div className="space-y-1.5">
-            <Label htmlFor="precio_actual">
-              Precio actual ({moneda}){" "}
-              <span className="text-muted-foreground font-normal">
-                — opcional
-              </span>
-            </Label>
+            <Label htmlFor="cantidad">Cantidad</Label>
             <Input
-              id="precio_actual"
-              name="precio_actual"
+              id="cantidad"
+              name="cantidad"
               type="number"
               min="0"
               step="any"
-              placeholder="Podés actualizarlo después"
+              placeholder="1"
+              required
               disabled={isPending}
+              value={cantidad}
+              onChange={(e) => setCantidad(e.target.value)}
             />
+          </div>
+
+          {/* Monto total invertido + Valor total actual */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="monto_compra_total">
+                Monto total invertido ({moneda})
+              </Label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground/60">
+                  {moneda === "ARS" ? "$" : "u$s"}
+                </span>
+                <Input
+                  id="monto_compra_total"
+                  name="monto_compra_total"
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="0.00"
+                  required
+                  disabled={isPending}
+                  value={montoCompraTotal}
+                  onChange={(e) => setMontoCompraTotal(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="monto_actual_total">
+                Valor total actual ({moneda}){" "}
+                <span className="text-muted-foreground font-normal text-xs">— opcional</span>
+              </Label>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground/60">
+                  {moneda === "ARS" ? "$" : "u$s"}
+                </span>
+                <Input
+                  id="monto_actual_total"
+                  name="monto_actual_total"
+                  type="number"
+                  min="0"
+                  step="any"
+                  placeholder="Podés actualizarlo después"
+                  disabled={isPending}
+                  value={montoActualTotal}
+                  onChange={(e) => setMontoActualTotal(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Panel de precios unitarios calculados */}
+          <div className="rounded-lg border border-border/40 bg-secondary/30 px-3 py-2.5 space-y-1.5">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Precios unitarios calculados
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Precio de compra:</span>
+              <span
+                className={`font-mono text-sm font-semibold ${
+                  precioUnitarioCompra ? "text-primary" : "text-muted-foreground/40"
+                }`}
+              >
+                {precioUnitarioCompra
+                  ? `${moneda === "ARS" ? "$" : "u$s"} ${precioUnitarioCompra.toLocaleString("es-AR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 6,
+                    })}`
+                  : "—"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground">Precio actual:</span>
+              <span
+                className={`font-mono text-sm font-semibold ${
+                  precioUnitarioActual
+                    ? precioUnitarioActual >= (precioUnitarioCompra ?? 0)
+                      ? "text-emerald-400"
+                      : "text-red-400"
+                    : "text-muted-foreground/40"
+                }`}
+              >
+                {precioUnitarioActual
+                  ? `${moneda === "ARS" ? "$" : "u$s"} ${precioUnitarioActual.toLocaleString("es-AR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 6,
+                    })}`
+                  : "—"}
+              </span>
+            </div>
+
+            {precioUnitarioCompra && precioUnitarioActual && (
+              <div className="flex items-center justify-between border-t border-border/30 pt-1.5 mt-1">
+                <span className="text-xs text-muted-foreground">Rendimiento estimado:</span>
+                <span
+                  className={`text-xs font-semibold ${
+                    precioUnitarioActual >= precioUnitarioCompra
+                      ? "text-emerald-400"
+                      : "text-red-400"
+                  }`}
+                >
+                  {precioUnitarioActual >= precioUnitarioCompra ? "+" : ""}
+                  {(((precioUnitarioActual - precioUnitarioCompra) / precioUnitarioCompra) * 100).toFixed(2)}%
+                </span>
+              </div>
+            )}
           </div>
 
           {error && (

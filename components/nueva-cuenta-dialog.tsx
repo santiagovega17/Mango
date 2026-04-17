@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { PlusCircle, Wallet, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { PlusCircle, Wallet, Loader2, AlertCircle } from "lucide-react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -61,7 +62,6 @@ export function NuevaCuentaDialog({
   const [tipo, setTipo] = useState("");
   const [moneda, setMoneda] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -70,7 +70,6 @@ export function NuevaCuentaDialog({
     setTipo("");
     setMoneda("");
     setError(null);
-    setSuccess(false);
   }
 
   function handleOpenChange(val: boolean) {
@@ -94,9 +93,10 @@ export function NuevaCuentaDialog({
       const result = await crearCuenta(formData);
       if (result.error) {
         setError(result.error);
+        toast.error(result.error);
       } else {
-        setSuccess(true);
-        setTimeout(() => handleOpenChange(false), 1000);
+        toast.success("¡Cuenta creada con éxito!");
+        handleOpenChange(false);
       }
     });
   }
@@ -215,13 +215,6 @@ export function NuevaCuentaDialog({
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            {success && (
-              <Alert variant="success" className="py-2.5">
-                <CheckCircle2 className="h-4 w-4" />
-                <AlertDescription>¡Cuenta creada con éxito!</AlertDescription>
-              </Alert>
-            )}
-
             <DialogFooter className="gap-2 pt-2">
               <Button
                 type="button"
@@ -231,7 +224,7 @@ export function NuevaCuentaDialog({
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isPending || success} className="gap-2">
+              <Button type="submit" disabled={isPending} className="gap-2">
                 {isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />

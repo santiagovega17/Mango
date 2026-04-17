@@ -308,6 +308,9 @@ INSERT INTO public.categorias (id, usuario_id, nombre, icono, color) VALUES
   (gen_random_uuid(), NULL, 'Inversiones',          'trending-up',     '#00BCD4'),
   (gen_random_uuid(), NULL, 'Sueldo',               'briefcase',       '#4CAF50'),
   (gen_random_uuid(), NULL, 'Freelance',            'laptop',          '#FF9800'),
+  (gen_random_uuid(), NULL, 'Deportes',             'dumbbell',        '#10B981'),
+  (gen_random_uuid(), NULL, 'Trabajo',              'briefcase',       '#6366F1'),
+  (gen_random_uuid(), NULL, 'Juntadas y salidas',   'users',           '#EC4899'),
   (gen_random_uuid(), NULL, 'Otros ingresos',       'circle-dollar-sign', '#607D8B'),
   (gen_random_uuid(), NULL, 'Otros gastos',         'circle-minus',    '#9E9E9E')
 ON CONFLICT DO NOTHING;

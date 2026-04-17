@@ -27,9 +27,29 @@ export interface TransaccionReciente {
   cuenta_nombre: string | null;
 }
 
+/** Cuentas que suman al "Saldo disponible" (excluye inversión y similares). */
+export const TIPOS_CUENTA_LIQUIDEZ = new Set([
+  "efectivo",
+  "banco",
+  "billetera_virtual",
+]);
+
+export function esCuentaLiquidez(tipo: string): boolean {
+  return TIPOS_CUENTA_LIQUIDEZ.has(tipo.trim().toLowerCase());
+}
+
 export interface DashboardData {
-  saldoTotalARS: number;
-  saldoTotalUSD: number;
+  /** Saldo solo cuentas Efectivo / Banco / Billetera virtual + sus movimientos */
+  saldoDisponibleARS: number;
+  saldoDisponibleUSD: number;
+  /** Valor de mercado por moneda: cantidad × (precio_actual o precio_compra si falta actual) */
+  totalInvertidoARS: number;
+  totalInvertidoUSD: number;
+  /** Suma en ARS usando Dólar Blue (venta); null si no hay cotización */
+  totalInvertidoEnARS: number | null;
+  /** Liquidez + inversiones en ARS unificado; null si no hay cotización */
+  patrimonioNetoEnARS: number | null;
+  cotizacionBlueVenta: number | null;
   ingresosARS: number;
   ingresosUSD: number;
   egresosARS: number;
@@ -68,7 +88,7 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   const { desde, hasta } = getRangoMesActual();
 
   // Ejecutamos todas las queries en paralelo para minimizar latencia
-  const [cuentasResult, txTodoResult, txMesResult, txRecentResult] =
+  const [cuentasResult, txTodoResult, txMesResult, txRecentResult, invResult, dolarBlue] =
     await Promise.all([
       // 1. Todas las cuentas del usuario
       supabase
@@ -77,10 +97,10 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
         .eq("usuario_id", userId)
         .order("created_at", { ascending: true }),
 
-      // 2. Todas las transacciones (para calcular saldo actual)
+      // 2. Todas las transacciones (para calcular saldo disponible por cuenta)
       supabase
         .from("transacciones")
-        .select("monto, tipo, moneda")
+        .select("monto, tipo, moneda, cuenta_id")
         .eq("usuario_id", userId),
 
       // 3. Transacciones del mes actual (para ingresos/egresos del mes)
@@ -101,23 +121,41 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
         .order("fecha", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(6),
+
+      // 5. Inversiones (valor de mercado para totales)
+      supabase
+        .from("inversiones")
+        .select("cantidad, precio_compra, precio_actual, moneda")
+        .eq("usuario_id", userId),
+
+      fetchDolarBlue(),
     ]);
 
   const cuentas = (cuentasResult.data ?? []) as CuentaResumen[];
   const txTodo = txTodoResult.data ?? [];
   const txMes = txMesResult.data ?? [];
   const txRecent = txRecentResult.data ?? [];
+  const inversionesRows = invResult.data ?? [];
 
-  // ── Calcular saldo inicial por moneda ──────────────────────────────────────
-  const saldoInicialARS = cuentas
-    .filter((c) => c.moneda === "ARS")
+  const idsLiquidez = new Set(
+    cuentas.filter((c) => esCuentaLiquidez(c.tipo)).map((c) => c.id)
+  );
+
+  const txLiquidez = txTodo.filter(
+    (t: { cuenta_id?: string }) =>
+      t.cuenta_id != null && idsLiquidez.has(String(t.cuenta_id))
+  );
+
+  // ── Saldo inicial solo cuentas de liquidez ─────────────────────────────────
+  const saldoInicialLiquidezARS = cuentas
+    .filter((c) => c.moneda === "ARS" && esCuentaLiquidez(c.tipo))
     .reduce((acc, c) => acc + Number(c.saldo_inicial), 0);
 
-  const saldoInicialUSD = cuentas
-    .filter((c) => c.moneda === "USD")
+  const saldoInicialLiquidezUSD = cuentas
+    .filter((c) => c.moneda === "USD" && esCuentaLiquidez(c.tipo))
     .reduce((acc, c) => acc + Number(c.saldo_inicial), 0);
 
-  // ── Calcular movimientos acumulados por moneda ─────────────────────────────
+  // ── Calcular movimientos acumulados por moneda (solo cuentas de liquidez) ────
   function calcBalance(
     txs: { monto: number; tipo: string; moneda: string }[],
     moneda: string
@@ -131,10 +169,46 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       }, 0);
   }
 
-  const saldoTotalARS =
-    saldoInicialARS + calcBalance(txTodo, "ARS");
-  const saldoTotalUSD =
-    saldoInicialUSD + calcBalance(txTodo, "USD");
+  const saldoDisponibleARS =
+    saldoInicialLiquidezARS + calcBalance(txLiquidez, "ARS");
+  const saldoDisponibleUSD =
+    saldoInicialLiquidezUSD + calcBalance(txLiquidez, "USD");
+
+  // ── Valor invertido: cantidad × precio_actual (si existe; si no, precio_compra) ─
+  let totalInvertidoARS = 0;
+  let totalInvertidoUSD = 0;
+  for (const row of inversionesRows as {
+    cantidad: number | string;
+    precio_compra: number | string;
+    precio_actual: number | string | null;
+    moneda: string;
+  }[]) {
+    const cantidad = Number(row.cantidad);
+    const pu =
+      row.precio_actual != null && row.precio_actual !== ""
+        ? Number(row.precio_actual)
+        : Number(row.precio_compra);
+    if (!cantidad || cantidad <= 0 || !pu || pu < 0) continue;
+    const valor = cantidad * pu;
+    if (row.moneda === "USD") totalInvertidoUSD += valor;
+    else totalInvertidoARS += valor;
+  }
+
+  const blueVenta = dolarBlue?.venta ?? null;
+  const totalInvertidoEnARS =
+    blueVenta != null && blueVenta > 0
+      ? totalInvertidoARS + totalInvertidoUSD * blueVenta
+      : null;
+
+  const liquidezEnARS =
+    blueVenta != null && blueVenta > 0
+      ? saldoDisponibleARS + saldoDisponibleUSD * blueVenta
+      : null;
+
+  const patrimonioNetoEnARS =
+    totalInvertidoEnARS != null && liquidezEnARS != null
+      ? liquidezEnARS + totalInvertidoEnARS
+      : null;
 
   // ── Ingresos y egresos del mes ─────────────────────────────────────────────
   function sumarPorTipo(
@@ -166,8 +240,13 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   }));
 
   return {
-    saldoTotalARS,
-    saldoTotalUSD,
+    saldoDisponibleARS,
+    saldoDisponibleUSD,
+    totalInvertidoARS,
+    totalInvertidoUSD,
+    totalInvertidoEnARS,
+    patrimonioNetoEnARS,
+    cotizacionBlueVenta: blueVenta,
     ingresosARS,
     ingresosUSD,
     egresosARS,
@@ -222,6 +301,26 @@ export async function getTransacciones(
     cuenta_id: t.cuenta_id,
     categoria_id: t.categoria_id ?? null,
   }));
+}
+
+// ── Query de categorías ───────────────────────────────────────────────────────
+
+export interface CategoriaItem {
+  id: string;
+  nombre: string;
+  icono: string | null;
+  color: string | null;
+}
+
+export async function getCategorias(): Promise<CategoriaItem[]> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("categorias")
+    .select("id, nombre, icono, color")
+    .order("nombre", { ascending: true });
+
+  return (data ?? []) as CategoriaItem[];
 }
 
 // ── Query de inversiones ──────────────────────────────────────────────────────

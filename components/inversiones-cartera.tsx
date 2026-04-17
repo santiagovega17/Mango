@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 import {
   TrendingUp,
   TrendingDown,
@@ -132,7 +133,9 @@ export function InversionesCartera({ inversiones, dolarBlue }: Props) {
       const res = await eliminarInversion(deleteTarget.id);
       if (res.error) {
         setDeleteError(res.error);
+        toast.error(res.error);
       } else {
+        toast.success(`"${deleteTarget.nombre_activo}" eliminado de la cartera.`);
         setDeleteTarget(null);
       }
     });
@@ -148,7 +151,9 @@ export function InversionesCartera({ inversiones, dolarBlue }: Props) {
       const res = await actualizarPrecioActual(formData);
       if (res.error) {
         setEditError(res.error);
+        toast.error(res.error);
       } else {
+        toast.success("Precio actualizado.");
         setEditTarget(null);
       }
     });

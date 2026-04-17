@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { Loader2, CheckCircle2, AlertCircle, Save } from "lucide-react";
+import { Loader2, AlertCircle, Save } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,14 +17,12 @@ interface Props {
 export function PerfilForm({ nombre, monedaPrincipal }: Props) {
   const [moneda, setMoneda] = useState<"ARS" | "USD">(monedaPrincipal);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
 
     const formData = new FormData(e.currentTarget);
     formData.set("moneda_principal", moneda);
@@ -32,9 +31,9 @@ export function PerfilForm({ nombre, monedaPrincipal }: Props) {
       const result = await actualizarPerfil(formData);
       if (result.error) {
         setError(result.error);
+        toast.error(result.error);
       } else {
-        setSuccess(true);
-        setTimeout(() => setSuccess(false), 3000);
+        toast.success("Perfil actualizado.");
       }
     });
   }
@@ -91,13 +90,6 @@ export function PerfilForm({ nombre, monedaPrincipal }: Props) {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {success && (
-        <Alert variant="success" className="py-2.5">
-          <CheckCircle2 className="h-4 w-4" />
-          <AlertDescription>Perfil actualizado correctamente.</AlertDescription>
-        </Alert>
-      )}
-
       <Button type="submit" disabled={isPending} className="w-full gap-2">
         {isPending ? (
           <>
