@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { crearInversion } from "@/lib/actions";
+import { parseFormDecimal } from "@/lib/form-numbers";
 
 const TIPOS_ACTIVO = [
   "Acción",
@@ -56,10 +57,10 @@ export function NuevaInversionDialog({
 
   // Precios unitarios calculados en tiempo real
   const { precioUnitarioCompra, precioUnitarioActual } = useMemo(() => {
-    const q = parseFloat(cantidad);
+    const q = parseFormDecimal(cantidad);
     const valido = q > 0;
-    const tc = parseFloat(montoCompraTotal);
-    const ta = parseFloat(montoActualTotal);
+    const tc = parseFormDecimal(montoCompraTotal);
+    const ta = parseFormDecimal(montoActualTotal);
     return {
       precioUnitarioCompra: valido && tc > 0 ? tc / q : null,
       precioUnitarioActual: valido && ta > 0 ? ta / q : null,
@@ -201,7 +202,8 @@ export function NuevaInversionDialog({
               id="cantidad"
               name="cantidad"
               type="number"
-              min="0"
+              inputMode="decimal"
+              min={0}
               step="any"
               placeholder="1"
               required
@@ -225,8 +227,9 @@ export function NuevaInversionDialog({
                   id="monto_compra_total"
                   name="monto_compra_total"
                   type="number"
-                  min="0"
-                  step="any"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.01}
                   placeholder="0.00"
                   required
                   disabled={isPending}
@@ -250,8 +253,9 @@ export function NuevaInversionDialog({
                   id="monto_actual_total"
                   name="monto_actual_total"
                   type="number"
-                  min="0"
-                  step="any"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.01}
                   placeholder="Podés actualizarlo después"
                   disabled={isPending}
                   value={montoActualTotal}

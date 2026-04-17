@@ -36,6 +36,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { NuevaInversionDialog } from "@/components/nueva-inversion-dialog";
 import { eliminarInversion, actualizarPrecioActual } from "@/lib/actions";
+import { parseFormDecimal } from "@/lib/form-numbers";
 import type { InversionItem, CotizacionDolar } from "@/lib/data";
 
 // ── Helpers de tipo activo ────────────────────────────────────────────────────
@@ -147,6 +148,15 @@ export function InversionesCartera({ inversiones, dolarBlue }: Props) {
     setEditError(null);
     const formData = new FormData(e.currentTarget);
     formData.set("inversion_id", editTarget.id);
+    const precioRaw = ((formData.get("precio_actual") as string) ?? "").trim();
+    if (precioRaw !== "") {
+      const precioVal = parseFormDecimal(precioRaw);
+      if (isNaN(precioVal) || precioVal < 0) {
+        setEditError("Ingresá un precio válido (mayor o igual a 0).");
+        return;
+      }
+      formData.set("precio_actual", String(precioVal));
+    }
     startEdit(async () => {
       const res = await actualizarPrecioActual(formData);
       if (res.error) {
@@ -478,8 +488,9 @@ export function InversionesCartera({ inversiones, dolarBlue }: Props) {
                 id="edit_precio_actual"
                 name="precio_actual"
                 type="number"
-                min="0"
-                step="any"
+                inputMode="decimal"
+                min={0}
+                step={0.0001}
                 defaultValue={editTarget?.precio_actual ?? ""}
                 placeholder="0.00"
                 autoFocus

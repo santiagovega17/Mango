@@ -32,6 +32,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { crearTransferencia, obtenerCuentasAction } from "@/lib/actions";
+import { parseFormDecimal } from "@/lib/form-numbers";
 import type { CuentaResumen } from "@/lib/data";
 
 interface Props {
@@ -130,8 +131,8 @@ export function NuevaTransferenciaDialog({
       return;
     }
 
-    const mO = parseFloat(montoOrigen);
-    const mD = parseFloat(montoDestino);
+    const mO = parseFormDecimal(montoOrigen);
+    const mD = parseFormDecimal(montoDestino);
 
     if (isNaN(mO) || mO <= 0) {
       setError(`Ingresá un monto válido a retirar en ${monedaOrigen}.`);
@@ -346,8 +347,9 @@ export function NuevaTransferenciaDialog({
                       </span>
                       <Input
                         type="number"
-                        min="0.01"
-                        step="0.01"
+                        inputMode="decimal"
+                        min={0.01}
+                        step={0.01}
                         placeholder="0.00"
                         value={montoOrigen}
                         onChange={(e) => setMontoOrigen(e.target.value)}
@@ -377,8 +379,9 @@ export function NuevaTransferenciaDialog({
                       </span>
                       <Input
                         type="number"
-                        min="0.01"
-                        step="0.01"
+                        inputMode="decimal"
+                        min={0.01}
+                        step={0.01}
                         placeholder="0.00"
                         value={montoDestino}
                         onChange={(e) => setMontoDestino(e.target.value)}
@@ -391,13 +394,13 @@ export function NuevaTransferenciaDialog({
                 </div>
 
                 {/* Tipo de cambio implícito */}
-                {montoOrigen && montoDestino && parseFloat(montoOrigen) > 0 && parseFloat(montoDestino) > 0 && (
+                {montoOrigen && montoDestino && parseFormDecimal(montoOrigen) > 0 && parseFormDecimal(montoDestino) > 0 && (
                   <p className="text-xs text-muted-foreground text-center pt-1">
                     Tipo de cambio implícito:{" "}
                     <strong className="text-amber-400">
                       {monedaOrigen === "ARS"
-                        ? `1 USD = $ ${(parseFloat(montoOrigen) / parseFloat(montoDestino)).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : `1 USD = $ ${(parseFloat(montoDestino) / parseFloat(montoOrigen)).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        ? `1 USD = $ ${(parseFormDecimal(montoOrigen) / parseFormDecimal(montoDestino)).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : `1 USD = $ ${(parseFormDecimal(montoDestino) / parseFormDecimal(montoOrigen)).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                     </strong>
                   </p>
                 )}
@@ -414,8 +417,9 @@ export function NuevaTransferenciaDialog({
                   </span>
                   <Input
                     type="number"
-                    min="0.01"
-                    step="0.01"
+                    inputMode="decimal"
+                    min={0.01}
+                    step={0.01}
                     placeholder="0.00"
                     value={montoOrigen}
                     onChange={(e) => {

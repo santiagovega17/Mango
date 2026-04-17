@@ -199,8 +199,9 @@ export function NuevaCuentaDialog({
                   id="cuenta-saldo"
                   name="saldo_inicial"
                   type="number"
-                  min="0"
-                  step="0.01"
+                  inputMode="decimal"
+                  min={0}
+                  step={0.01}
                   placeholder="0.00"
                   defaultValue="0"
                   className="pl-12 bg-secondary/50 border-border/80 h-11"

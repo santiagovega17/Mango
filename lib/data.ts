@@ -227,7 +227,6 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   const egresosUSD = sumarPorTipo(txMes, "egreso", "USD");
 
   // ── Formatear transacciones recientes ─────────────────────────────────────
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const transaccionesRecientes: TransaccionReciente[] = txRecent.map((t: any) => ({
     id: t.id,
     monto: Number(t.monto),
@@ -287,7 +286,6 @@ export async function getTransacciones(
     .order("fecha", { ascending: false })
     .order("created_at", { ascending: false });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((t: any) => ({
     id: t.id,
     monto: Number(t.monto),
@@ -348,7 +346,6 @@ export async function getInversiones(
     .eq("usuario_id", userId)
     .order("created_at", { ascending: false });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((i: any) => ({
     id: i.id,
     nombre_activo: i.nombre_activo,

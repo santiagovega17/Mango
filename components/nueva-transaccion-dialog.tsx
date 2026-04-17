@@ -35,6 +35,7 @@ import {
   obtenerCuentasAction,
   obtenerCategoriasAction,
 } from "@/lib/actions";
+import { parseFormDecimal } from "@/lib/form-numbers";
 import type { CuentaResumen } from "@/lib/data";
 
 type TipoTx = "ingreso" | "egreso";
@@ -141,6 +142,13 @@ export function NuevaTransaccionDialog({
     }
 
     const formData = new FormData(e.currentTarget);
+    const montoVal = parseFormDecimal(formData.get("monto"));
+    if (isNaN(montoVal) || montoVal <= 0) {
+      setError("Ingresá un monto válido mayor a 0.");
+      return;
+    }
+    formData.set("monto", String(montoVal));
+
     formData.set("tipo", tipo);
     formData.set("moneda", moneda);
     formData.set("cuenta_id", cuentaId);
@@ -260,8 +268,9 @@ export function NuevaTransaccionDialog({
                 <Input
                   name="monto"
                   type="number"
-                  min="0.01"
-                  step="0.01"
+                  inputMode="decimal"
+                  min={0.01}
+                  step={0.01}
                   placeholder="0.00"
                   required
                   className="bg-secondary/50 border-border/80 h-11 text-lg font-mono flex-1"

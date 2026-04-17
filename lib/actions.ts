@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { CuentaResumen } from "@/lib/data";
+import { parseFormDecimal } from "@/lib/form-numbers";
 
 type ActionResult =
   | { error: string; success?: never }
@@ -38,7 +39,7 @@ export async function crearCuenta(formData: FormData): Promise<ActionResult> {
     const tipo = required(formData.get("tipo"), "Tipo");
     const moneda = required(formData.get("moneda"), "Moneda") as "ARS" | "USD";
     const saldoRaw = (formData.get("saldo_inicial") as string)?.trim() || "0";
-    const saldo_inicial = parseFloat(saldoRaw);
+    const saldo_inicial = parseFormDecimal(saldoRaw);
 
     if (isNaN(saldo_inicial) || saldo_inicial < 0) {
       return { error: "El saldo inicial debe ser un número positivo." };
@@ -145,7 +146,7 @@ export async function crearTransaccion(
     const categoria_id =
       (formData.get("categoria_id") as string)?.trim() || null;
 
-    const monto = parseFloat(montoRaw);
+    const monto = parseFormDecimal(montoRaw);
     if (isNaN(monto) || monto <= 0) {
       return { error: "El monto debe ser un número mayor a 0." };
     }
@@ -200,16 +201,16 @@ export async function crearInversion(
     const precioCompraRaw = required(formData.get("precio_compra"), "Precio de compra");
     const precioActualRaw = (formData.get("precio_actual") as string)?.trim() || "";
 
-    const cantidad = parseFloat(cantidadRaw);
+    const cantidad = parseFormDecimal(cantidadRaw);
     if (isNaN(cantidad) || cantidad <= 0)
       return { error: "La cantidad debe ser un número mayor a 0." };
 
-    const precio_compra = parseFloat(precioCompraRaw);
+    const precio_compra = parseFormDecimal(precioCompraRaw);
     if (isNaN(precio_compra) || precio_compra < 0)
       return { error: "El precio de compra debe ser un número positivo." };
 
     const precio_actual =
-      precioActualRaw !== "" ? parseFloat(precioActualRaw) : null;
+      precioActualRaw !== "" ? parseFormDecimal(precioActualRaw) : null;
     if (precio_actual !== null && (isNaN(precio_actual) || precio_actual < 0))
       return { error: "El precio actual debe ser un número positivo." };
 
@@ -286,7 +287,7 @@ export async function actualizarPrecioActual(
     const inversionId = required(formData.get("inversion_id"), "ID de inversión");
     const precioRaw = (formData.get("precio_actual") as string)?.trim();
     const precio_actual =
-      precioRaw !== "" && precioRaw != null ? parseFloat(precioRaw) : null;
+      precioRaw !== "" && precioRaw != null ? parseFormDecimal(precioRaw) : null;
 
     if (precio_actual !== null && (isNaN(precio_actual) || precio_actual < 0))
       return { error: "El precio debe ser un número positivo." };
@@ -329,7 +330,7 @@ export async function editarTransaccion(
     const categoria_id =
       (formData.get("categoria_id") as string)?.trim() || null;
 
-    const monto = parseFloat(montoRaw);
+    const monto = parseFormDecimal(montoRaw);
     if (isNaN(monto) || monto <= 0)
       return { error: "El monto debe ser mayor a 0." };
 
@@ -418,11 +419,11 @@ export async function crearTransferencia(
     if (cuentaOrigenId === cuentaDestinoId)
       return { error: "La cuenta origen y destino no pueden ser la misma." };
 
-    const montoOrigen = parseFloat(montoOrigenRaw);
+    const montoOrigen = parseFormDecimal(montoOrigenRaw);
     if (isNaN(montoOrigen) || montoOrigen <= 0)
       return { error: "El monto a retirar debe ser mayor a 0." };
 
-    const montoDestino = parseFloat(montoDestinoRaw);
+    const montoDestino = parseFormDecimal(montoDestinoRaw);
     if (isNaN(montoDestino) || montoDestino <= 0)
       return { error: "El monto a depositar debe ser mayor a 0." };
 

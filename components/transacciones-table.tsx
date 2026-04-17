@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatCurrency } from "@/lib/utils";
+import { parseFormDecimal } from "@/lib/form-numbers";
 import {
   Table,
   TableBody,
@@ -203,6 +204,12 @@ export function TransaccionesTable({ transacciones, cuentas }: Props) {
     setEditError(null);
     const formData = new FormData(e.currentTarget);
     formData.set("transaccion_id", editTarget.id);
+    const montoVal = parseFormDecimal(formData.get("monto"));
+    if (isNaN(montoVal) || montoVal <= 0) {
+      setEditError("Ingresá un monto válido mayor a 0.");
+      return;
+    }
+    formData.set("monto", String(montoVal));
 
     startEdit(async () => {
       const res = await editarTransaccion(formData);
@@ -578,8 +585,9 @@ export function TransaccionesTable({ transacciones, cuentas }: Props) {
                     id="edit_monto"
                     name="monto"
                     type="number"
-                    min="0.01"
-                    step="0.01"
+                    inputMode="decimal"
+                    min={0.01}
+                    step={0.01}
                     defaultValue={editTarget.monto}
                     required
                     disabled={isPendingEdit}
@@ -700,7 +708,7 @@ export function TransaccionesTable({ transacciones, cuentas }: Props) {
               ¿Estás seguro? Esta acción no se puede deshacer.
               {deleteTarget && (
                 <span className="block mt-1 font-medium text-foreground">
-                  "{deleteTarget.descripcion ?? deleteTarget.tipo}" —{" "}
+                  {`"${deleteTarget.descripcion ?? deleteTarget.tipo}"`} —{" "}
                   {formatCurrency(deleteTarget.monto, deleteTarget.moneda)}
                 </span>
               )}
