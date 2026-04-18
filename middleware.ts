@@ -6,7 +6,10 @@ const PROTECTED_PREFIXES = [
   "/dashboard",
   "/transacciones",
   "/inversiones",
+  "/cuotas",
   "/configuracion",
+  "/onboarding",
+  "/resumen",
 ];
 // Rutas de autenticación — redirigen a /dashboard si ya está logueado
 const AUTH_ROUTES = ["/login"];

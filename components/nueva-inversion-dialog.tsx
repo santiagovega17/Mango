@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition, useMemo } from "react";
+import { useRef, useState, useTransition, useMemo, useEffect } from "react";
 import { PlusCircle, Loader2, TrendingUp, Calculator } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,8 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { crearInversion } from "@/lib/actions";
+import { crearInversion, obtenerCuentasAction } from "@/lib/actions";
 import { parseFormDecimal } from "@/lib/form-numbers";
+import { esCuentaBrokerInversion } from "@/lib/cuenta-tipo";
+import type { CuentaResumen } from "@/lib/data";
+import Link from "next/link";
 
 const TIPOS_ACTIVO = [
   "Acción",
@@ -53,7 +56,38 @@ export function NuevaInversionDialog({
   const [cantidad, setCantidad] = useState("");
   const [montoCompraTotal, setMontoCompraTotal] = useState("");
   const [montoActualTotal, setMontoActualTotal] = useState("");
+  const [cuentas, setCuentas] = useState<CuentaResumen[]>([]);
+  const [cuentaBrokerId, setCuentaBrokerId] = useState("");
+  const [loadingCuentas, setLoadingCuentas] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+
+  const brokersEnMoneda = useMemo(
+    () =>
+      cuentas.filter(
+        (c) => esCuentaBrokerInversion(c.tipo) && c.moneda === moneda
+      ),
+    [cuentas, moneda]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setLoadingCuentas(true);
+    obtenerCuentasAction()
+      .then(setCuentas)
+      .finally(() => setLoadingCuentas(false));
+  }, [open]);
+
+  useEffect(() => {
+    if (brokersEnMoneda.length === 0) {
+      setCuentaBrokerId("");
+      return;
+    }
+    setCuentaBrokerId((prev) =>
+      brokersEnMoneda.some((b) => b.id === prev)
+        ? prev
+        : brokersEnMoneda[0].id
+    );
+  }, [brokersEnMoneda]);
 
   // Precios unitarios calculados en tiempo real
   const { precioUnitarioCompra, precioUnitarioActual } = useMemo(() => {
@@ -76,9 +110,15 @@ export function NuevaInversionDialog({
       return;
     }
 
+    if (!cuentaBrokerId) {
+      setError("Seleccioná la cuenta broker donde está la posición.");
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
     formData.set("moneda", moneda);
     formData.set("tipo_activo", tipoActivo);
+    formData.set("cuenta_id", cuentaBrokerId);
     // Persistir precios unitarios, no los totales
     formData.set("precio_compra", String(precioUnitarioCompra));
     if (precioUnitarioActual) {
@@ -100,6 +140,7 @@ export function NuevaInversionDialog({
         setCantidad("");
         setMontoCompraTotal("");
         setMontoActualTotal("");
+        setCuentaBrokerId("");
         setOpen(false);
       }
     });
@@ -113,6 +154,7 @@ export function NuevaInversionDialog({
       setCantidad("");
       setMontoCompraTotal("");
       setMontoActualTotal("");
+      setCuentaBrokerId("");
       formRef.current?.reset();
     }
     setOpen(v);
@@ -134,11 +176,74 @@ export function NuevaInversionDialog({
             Nueva inversión
           </DialogTitle>
           <DialogDescription>
-            Agregá un activo a tu cartera para hacer seguimiento.
+            Agregá un activo vinculado a una cuenta broker (tipo inversión).
           </DialogDescription>
         </DialogHeader>
 
         <form ref={formRef} onSubmit={handleSubmit} className="space-y-4 pt-1">
+          {/* Moneda primero (filtra brokers) */}
+          <div className="space-y-1.5">
+            <Label>Moneda</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["ARS", "USD"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMoneda(m)}
+                  disabled={isPending}
+                  className={`rounded-lg border py-2 text-sm font-medium transition-colors ${
+                    moneda === m
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-secondary/40 text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {m === "ARS" ? "🇦🇷 ARS" : "🇺🇸 USD"}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cuenta broker */}
+          <div className="space-y-1.5">
+            <Label>Cuenta broker</Label>
+            {loadingCuentas ? (
+              <p className="text-xs text-muted-foreground">Cargando cuentas…</p>
+            ) : brokersEnMoneda.length === 0 ? (
+              <Alert className="py-2">
+                <AlertDescription className="text-xs">
+                  No tenés una cuenta tipo{" "}
+                  <strong className="text-foreground">Cuenta de inversión</strong>{" "}
+                  en {moneda}. Creala en{" "}
+                  <Link
+                    href="/configuracion"
+                    className="text-primary underline underline-offset-2"
+                  >
+                    Configuración
+                  </Link>
+                  .
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Select
+                value={cuentaBrokerId}
+                onValueChange={setCuentaBrokerId}
+                disabled={isPending}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Elegí el broker" />
+                </SelectTrigger>
+                <SelectContent>
+                  {brokersEnMoneda.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
           {/* Nombre del activo */}
           <div className="space-y-1.5">
             <Label htmlFor="nombre_activo">Nombre del activo</Label>
@@ -171,28 +276,6 @@ export function NuevaInversionDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          {/* Moneda */}
-          <div className="space-y-1.5">
-            <Label>Moneda</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["ARS", "USD"] as const).map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setMoneda(m)}
-                  disabled={isPending}
-                  className={`rounded-lg border py-2 text-sm font-medium transition-colors ${
-                    moneda === m
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border bg-secondary/40 text-muted-foreground hover:bg-secondary"
-                  }`}
-                >
-                  {m === "ARS" ? "🇦🇷 ARS" : "🇺🇸 USD"}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Cantidad (divisor compartido) */}
@@ -345,7 +428,12 @@ export function NuevaInversionDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isPending || !tipoActivo}
+              disabled={
+                isPending ||
+                !tipoActivo ||
+                !cuentaBrokerId ||
+                brokersEnMoneda.length === 0
+              }
               className="gap-2"
             >
               {isPending && <Loader2 className="h-4 w-4 animate-spin" />}

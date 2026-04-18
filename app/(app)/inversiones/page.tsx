@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getInversiones, fetchDolarBlue } from "@/lib/data";
+import { getCarteraInversionesPorBroker, fetchDolarBlue } from "@/lib/data";
 import { InversionesCartera } from "@/components/inversiones-cartera";
 import { NuevaInversionDialog } from "@/components/nueva-inversion-dialog";
 
@@ -12,8 +12,8 @@ export default async function InversionesPage() {
 
   if (!user) redirect("/login");
 
-  const [inversiones, dolarBlue] = await Promise.all([
-    getInversiones(user.id),
+  const [cartera, dolarBlue] = await Promise.all([
+    getCarteraInversionesPorBroker(user.id),
     fetchDolarBlue(),
   ]);
 
@@ -26,14 +26,18 @@ export default async function InversionesPage() {
             Mi Cartera
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Seguimiento de tus inversiones y rendimiento.
+            Por cuenta broker: posiciones, saldo y estimado no invertido.
           </p>
         </div>
-        {inversiones.length > 0 && <NuevaInversionDialog />}
+        <NuevaInversionDialog />
       </div>
 
       {/* Cartera */}
-      <InversionesCartera inversiones={inversiones} dolarBlue={dolarBlue} />
+      <InversionesCartera
+        brokers={cartera.brokers}
+        sinBroker={cartera.sinBroker}
+        dolarBlue={dolarBlue}
+      />
     </div>
   );
 }

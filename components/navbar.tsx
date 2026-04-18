@@ -13,7 +13,8 @@ import {
   LogOut,
   ChevronDown,
   User,
-  Plus,
+  CalendarRange,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,8 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transacciones", label: "Transacciones", icon: ArrowLeftRight },
   { href: "/inversiones", label: "Inversiones", icon: TrendingUp },
+  { href: "/cuotas", label: "Cuotas", icon: CalendarClock },
+  { href: "/resumen", label: "Resumen anual", icon: CalendarRange },
   { href: "/configuracion", label: "Configuración", icon: Settings },
 ];
 
@@ -57,7 +60,7 @@ export function Navbar({ userEmail, userName }: NavbarProps) {
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md print:hidden">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}

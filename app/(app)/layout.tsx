@@ -30,7 +30,7 @@ export default async function AppLayout({
   return (
     <>
       <Navbar userEmail={user.email ?? ""} userName={userName} />
-      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
+      <main className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 print:max-w-none print:px-4 print:py-4">
         {children}
       </main>
     </>

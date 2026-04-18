@@ -17,6 +17,7 @@ import {
   PieChart,
   Scale,
 } from "lucide-react";
+import Link from "next/link";
 import { NuevaCuentaDialog } from "@/components/nueva-cuenta-dialog";
 import { NuevaTransaccionDialog } from "@/components/nueva-transaccion-dialog";
 
@@ -112,11 +113,19 @@ export default async function DashboardPage() {
                 para empezar a controlar tus finanzas.
               </p>
             </div>
-            <NuevaCuentaDialog
-              triggerLabel="Crear mi primera cuenta"
-              triggerVariant="default"
-              triggerSize="default"
-            />
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <NuevaCuentaDialog
+                triggerLabel="Crear mi primera cuenta"
+                triggerVariant="default"
+                triggerSize="default"
+              />
+              <Link
+                href="/onboarding"
+                className="text-sm text-muted-foreground hover:text-primary underline-offset-4 hover:underline transition-colors"
+              >
+                Ver guía paso a paso
+              </Link>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -144,7 +153,7 @@ export default async function DashboardPage() {
             <CardContent className="p-0 space-y-2">
               <div className="min-w-0">
                 <p className="text-[10px] text-muted-foreground leading-tight truncate mb-0.5">
-                  Pesos · efectivo, banco, billetera
+                  Efectivo, banco, billetera + no invertido en brokers
                 </p>
                 <p className="text-lg font-bold tabular-nums tracking-tight text-foreground break-all">
                   {formatCurrency(saldoDisponibleARS, "ARS")}
@@ -469,8 +478,11 @@ export default async function DashboardPage() {
                         {c.nombre}
                       </span>
                     </div>
-                    <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
-                      {formatCurrency(c.saldo_inicial, c.moneda)}
+                    <span className="text-xs text-muted-foreground flex-shrink-0 ml-2 tabular-nums">
+                      {formatCurrency(
+                        c.saldo_disponible ?? c.saldo_inicial,
+                        c.moneda
+                      )}
                     </span>
                   </div>
                 ))}

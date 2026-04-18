@@ -5,6 +5,8 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { MonedaTipo, TransaccionTipo } from "@/lib/supabase/types";
+import { fechaProximaCuota } from "@/lib/cuotas-utils";
+import { esCuentaBrokerInversion } from "@/lib/cuenta-tipo";
 
 // ── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -14,6 +16,8 @@ export interface CuentaResumen {
   tipo: string;
   moneda: MonedaTipo;
   saldo_inicial: number;
+  /** Saldo actual (inicial + ingresos − egresos en esa cuenta). Lo completa getDashboardData. */
+  saldo_disponible?: number;
 }
 
 export interface TransaccionReciente {
@@ -39,7 +43,10 @@ export function esCuentaLiquidez(tipo: string): boolean {
 }
 
 export interface DashboardData {
-  /** Saldo solo cuentas Efectivo / Banco / Billetera virtual + sus movimientos */
+  /**
+   * Efectivo / banco / billetera + movimientos, más el efectivo no invertido
+   * en cuentas tipo inversión (saldo cuenta − valor mercado posiciones en Mango).
+   */
   saldoDisponibleARS: number;
   saldoDisponibleUSD: number;
   /** Valor de mercado por moneda: cantidad × (precio_actual o precio_compra si falta actual) */
@@ -81,6 +88,133 @@ function getRangoMesActual(): { desde: string; hasta: string } {
   return { desde, hasta };
 }
 
+/** Fila mínima de transacción para calcular saldo por cuenta. */
+type TxSaldoLista = {
+  monto: number | string;
+  tipo: string;
+  moneda: string;
+  cuenta_id?: string | null;
+};
+
+/** Clave para emparejar cuentas “gemelas” ARS/USD (ej. Astropay + AstroPay (USD)). */
+function walletKeyCuenta(nombre: string): string {
+  return nombre
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s*\(usd\)\s*$/i, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Saldo de la cuenta en su moneda (inicial + movimientos).
+ * - Misma moneda cuenta/transacción: suma ingreso, resta egreso.
+ * - Cruzado ARS↔USD: convierte con blue venta (misma lógica que unificar cartera).
+ * - tipo transferencia: no ajusta (las transferencias de la app van como ingreso+egreso).
+ */
+function saldoDisponibleCuenta(
+  cuenta: CuentaResumen,
+  txs: TxSaldoLista[],
+  blue: number | null
+): number {
+  const base = Number(cuenta.saldo_inicial);
+  const idNorm = String(cuenta.id).toLowerCase();
+  let delta = 0;
+  for (const t of txs) {
+    if (t.cuenta_id == null) continue;
+    if (String(t.cuenta_id).toLowerCase() !== idNorm) continue;
+    const tipo = String(t.tipo ?? "").toLowerCase();
+    const sign = tipo === "ingreso" ? 1 : tipo === "egreso" ? -1 : 0;
+    if (sign === 0) continue;
+    const m = Number(t.monto);
+    const txMon = t.moneda === "USD" ? "USD" : "ARS";
+    if (txMon === cuenta.moneda) {
+      delta += sign * m;
+      continue;
+    }
+    if (blue != null && blue > 0) {
+      if (cuenta.moneda === "USD" && txMon === "ARS") {
+        delta += sign * (m / blue);
+      } else if (cuenta.moneda === "ARS" && txMon === "USD") {
+        delta += sign * (m * blue);
+      }
+    }
+  }
+  return base + delta;
+}
+
+/**
+ * Saldo mostrado en listados: si hay par ARS+USD con el mismo nombre base,
+ * los movimientos en USD se consolidan en la cuenta en USD.
+ */
+function saldoCuentaParaListadoDashboard(
+  cuenta: CuentaResumen,
+  todas: CuentaResumen[],
+  txs: TxSaldoLista[],
+  blue: number | null
+): number {
+  const grupos = new Map<string, CuentaResumen[]>();
+  for (const c of todas) {
+    const k = walletKeyCuenta(c.nombre);
+    const arr = grupos.get(k) ?? [];
+    arr.push(c);
+    grupos.set(k, arr);
+  }
+  const g = grupos.get(walletKeyCuenta(cuenta.nombre)) ?? [cuenta];
+  const vinculado =
+    g.length >= 2 &&
+    g.some((x) => x.moneda === "USD") &&
+    g.some((x) => x.moneda === "ARS");
+  if (!vinculado) {
+    return saldoDisponibleCuenta(cuenta, txs, blue);
+  }
+
+  const idsGrupo = new Set(g.map((c) => String(c.id).toLowerCase()));
+
+  if (cuenta.moneda === "USD") {
+    const base = Number(cuenta.saldo_inicial);
+    let delta = 0;
+    for (const t of txs) {
+      if (t.cuenta_id == null) continue;
+      const cid = String(t.cuenta_id).toLowerCase();
+      if (!idsGrupo.has(cid)) continue;
+      const tipo = String(t.tipo ?? "").toLowerCase();
+      const sign = tipo === "ingreso" ? 1 : tipo === "egreso" ? -1 : 0;
+      if (sign === 0) continue;
+      const m = Number(t.monto);
+      const txMon = t.moneda === "USD" ? "USD" : "ARS";
+      if (txMon === "USD") {
+        delta += sign * m;
+        continue;
+      }
+      if (cid !== String(cuenta.id).toLowerCase()) continue;
+      if (blue != null && blue > 0 && txMon === "ARS") {
+        delta += sign * (m / blue);
+      }
+    }
+    return base + delta;
+  }
+
+  const base = Number(cuenta.saldo_inicial);
+  const idNorm = String(cuenta.id).toLowerCase();
+  let delta = 0;
+  for (const t of txs) {
+    if (t.cuenta_id == null) continue;
+    const cid = String(t.cuenta_id).toLowerCase();
+    if (cid !== idNorm) continue;
+    const tipo = String(t.tipo ?? "").toLowerCase();
+    const sign = tipo === "ingreso" ? 1 : tipo === "egreso" ? -1 : 0;
+    if (sign === 0) continue;
+    const m = Number(t.monto);
+    const txMon = t.moneda === "USD" ? "USD" : "ARS";
+    if (txMon === "USD") continue;
+    if (txMon === cuenta.moneda) {
+      delta += sign * m;
+    }
+  }
+  return base + delta;
+}
+
 // ── Query principal del dashboard ────────────────────────────────────────────
 
 export async function getDashboardData(userId: string): Promise<DashboardData> {
@@ -97,7 +231,7 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
         .eq("usuario_id", userId)
         .order("created_at", { ascending: true }),
 
-      // 2. Todas las transacciones (para calcular saldo disponible por cuenta)
+      // 2. Todas las transacciones (saldo por cuenta; incluye moneda para cruce ARS/USD)
       supabase
         .from("transacciones")
         .select("monto, tipo, moneda, cuenta_id")
@@ -122,10 +256,10 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
         .order("created_at", { ascending: false })
         .limit(6),
 
-      // 5. Inversiones (valor de mercado para totales)
+      // 5. Inversiones (valor de mercado + cuenta para efectivo no invertido broker)
       supabase
         .from("inversiones")
-        .select("cantidad, precio_compra, precio_actual, moneda")
+        .select("cantidad, precio_compra, precio_actual, moneda, cuenta_id")
         .eq("usuario_id", userId),
 
       fetchDolarBlue(),
@@ -169,10 +303,56 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
       }, 0);
   }
 
-  const saldoDisponibleARS =
+  let saldoDisponibleARS =
     saldoInicialLiquidezARS + calcBalance(txLiquidez, "ARS");
-  const saldoDisponibleUSD =
+  let saldoDisponibleUSD =
     saldoInicialLiquidezUSD + calcBalance(txLiquidez, "USD");
+
+  // ── Efectivo no invertido en cuentas broker → suma al saldo disponible ───────
+  const blueVentaEarly = dolarBlue?.venta ?? null;
+  type InvRow = {
+    cantidad: number | string;
+    precio_compra: number | string;
+    precio_actual: number | string | null;
+    moneda: string;
+    cuenta_id: string | null;
+  };
+  function valorMercadoPosicionesEnCuenta(
+    cuentaId: string,
+    rows: InvRow[]
+  ): number {
+    let sum = 0;
+    const idNorm = String(cuentaId).toLowerCase();
+    for (const row of rows) {
+      if (row.cuenta_id == null) continue;
+      if (String(row.cuenta_id).toLowerCase() !== idNorm) continue;
+      const cantidad = Number(row.cantidad);
+      const pu =
+        row.precio_actual != null && row.precio_actual !== ""
+          ? Number(row.precio_actual)
+          : Number(row.precio_compra);
+      if (!cantidad || cantidad <= 0 || !pu || pu < 0) continue;
+      sum += cantidad * pu;
+    }
+    return sum;
+  }
+
+  for (const c of cuentas) {
+    if (!esCuentaBrokerInversion(c.tipo)) continue;
+    const saldoCuenta = saldoCuentaParaListadoDashboard(
+      c,
+      cuentas,
+      txTodo as TxSaldoLista[],
+      blueVentaEarly
+    );
+    const vm = valorMercadoPosicionesEnCuenta(
+      c.id,
+      inversionesRows as InvRow[]
+    );
+    const noInvertido = Math.max(0, saldoCuenta - vm);
+    if (c.moneda === "USD") saldoDisponibleUSD += noInvertido;
+    else saldoDisponibleARS += noInvertido;
+  }
 
   // ── Valor invertido: cantidad × precio_actual (si existe; si no, precio_compra) ─
   let totalInvertidoARS = 0;
@@ -238,6 +418,40 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
     cuenta_nombre: t.cuentas?.nombre ?? null,
   }));
 
+  /** Orden: más saldo a menos (USD convertido a ARS con blue si hay cotización), tie-break alfabético. */
+  function comparableSaldoEnARS(
+    c: CuentaResumen & { saldo_disponible: number },
+    blue: number | null
+  ): number {
+    const s = c.saldo_disponible;
+    if (c.moneda === "USD" && blue != null && blue > 0) return s * blue;
+    if (c.moneda === "USD") return s * 1000;
+    return s;
+  }
+
+  const cuentasConSaldo: CuentaResumen[] = cuentas.map((c) => ({
+    ...c,
+    saldo_disponible: saldoCuentaParaListadoDashboard(
+      c,
+      cuentas,
+      txTodo,
+      blueVenta
+    ),
+  }));
+
+  cuentasConSaldo.sort((a, b) => {
+    const ca = comparableSaldoEnARS(
+      a as CuentaResumen & { saldo_disponible: number },
+      blueVenta
+    );
+    const cb = comparableSaldoEnARS(
+      b as CuentaResumen & { saldo_disponible: number },
+      blueVenta
+    );
+    if (cb !== ca) return cb - ca;
+    return a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" });
+  });
+
   return {
     saldoDisponibleARS,
     saldoDisponibleUSD,
@@ -250,10 +464,43 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
     ingresosUSD,
     egresosARS,
     egresosUSD,
-    cuentas,
+    cuentas: cuentasConSaldo,
     transaccionesRecientes,
     mesActual: getMesActual(),
   };
+}
+
+/** Cuentas con `saldo_disponible` (misma regla que listado del dashboard). */
+export async function getCuentasConSaldoDisponible(
+  userId: string
+): Promise<CuentaResumen[]> {
+  const supabase = await createClient();
+  const [cuentasResult, txTodoResult, dolarBlue] = await Promise.all([
+    supabase
+      .from("cuentas")
+      .select("id, nombre, tipo, moneda, saldo_inicial")
+      .eq("usuario_id", userId)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("transacciones")
+      .select("monto, tipo, moneda, cuenta_id")
+      .eq("usuario_id", userId),
+    fetchDolarBlue(),
+  ]);
+
+  const cuentas = (cuentasResult.data ?? []) as CuentaResumen[];
+  const txTodo = (txTodoResult.data ?? []) as TxSaldoLista[];
+  const blueVenta = dolarBlue?.venta ?? null;
+
+  return cuentas.map((c) => ({
+    ...c,
+    saldo_disponible: saldoCuentaParaListadoDashboard(
+      c,
+      cuentas,
+      txTodo,
+      blueVenta
+    ),
+  }));
 }
 
 // ── Query completa de transacciones ──────────────────────────────────────────
@@ -331,6 +578,8 @@ export interface InversionItem {
   precio_compra: number;
   precio_actual: number | null;
   moneda: MonedaTipo;
+  cuenta_id: string | null;
+  cuenta_nombre: string | null;
 }
 
 export async function getInversiones(
@@ -341,7 +590,7 @@ export async function getInversiones(
   const { data } = await supabase
     .from("inversiones")
     .select(
-      "id, nombre_activo, tipo_activo, cantidad, precio_compra, precio_actual, moneda"
+      "id, nombre_activo, tipo_activo, cantidad, precio_compra, precio_actual, moneda, cuenta_id, cuentas(nombre)"
     )
     .eq("usuario_id", userId)
     .order("created_at", { ascending: false });
@@ -354,7 +603,61 @@ export async function getInversiones(
     precio_compra: Number(i.precio_compra),
     precio_actual: i.precio_actual != null ? Number(i.precio_actual) : null,
     moneda: i.moneda as MonedaTipo,
+    cuenta_id: i.cuenta_id ?? null,
+    cuenta_nombre: i.cuentas?.nombre ?? null,
   }));
+}
+
+/** Cartera agrupada por cuenta broker (inversión). */
+export interface CarteraPorBroker {
+  cuenta_id: string;
+  cuenta_nombre: string;
+  moneda: MonedaTipo;
+  /** Saldo de la cuenta (inicial + movimientos). */
+  saldo_cuenta: number;
+  /** Suma cantidad × precio mercado (o compra si no hay actual). */
+  valor_mercado_posiciones: number;
+  /** saldo_cuenta − valor_mercado_posiciones (estimado en Mango). */
+  no_invertido: number;
+  inversiones: InversionItem[];
+}
+
+export async function getCarteraInversionesPorBroker(
+  userId: string
+): Promise<{ brokers: CarteraPorBroker[]; sinBroker: InversionItem[] }> {
+  const [cuentasConSaldo, inversiones] = await Promise.all([
+    getCuentasConSaldoDisponible(userId),
+    getInversiones(userId),
+  ]);
+
+  const cuentasBroker = cuentasConSaldo
+    .filter((c) => esCuentaBrokerInversion(c.tipo))
+    .sort((a, b) =>
+      a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
+    );
+
+  const sinBroker = inversiones.filter((i) => i.cuenta_id == null);
+
+  const brokers: CarteraPorBroker[] = cuentasBroker.map((c) => {
+    const invs = inversiones.filter((i) => i.cuenta_id === c.id);
+    const valor_mercado_posiciones = invs.reduce(
+      (acc, i) =>
+        acc + i.cantidad * (i.precio_actual ?? i.precio_compra),
+      0
+    );
+    const saldo_cuenta = Number(c.saldo_disponible ?? c.saldo_inicial);
+    return {
+      cuenta_id: c.id,
+      cuenta_nombre: c.nombre,
+      moneda: c.moneda,
+      saldo_cuenta,
+      valor_mercado_posiciones,
+      no_invertido: saldo_cuenta - valor_mercado_posiciones,
+      inversiones: invs,
+    };
+  });
+
+  return { brokers, sinBroker };
 }
 
 // ── Cotización dólar blue desde dolarapi.com ──────────────────────────────────
@@ -390,4 +693,190 @@ export async function getCuentasUsuario(
     .order("created_at", { ascending: true });
 
   return (data ?? []) as CuentaResumen[];
+}
+
+// ── Onboarding: conteos livianos ─────────────────────────────────────────────
+
+export interface OnboardingStatus {
+  cuentaCount: number;
+  transaccionCount: number;
+}
+
+export async function getOnboardingStatus(
+  userId: string
+): Promise<OnboardingStatus> {
+  const supabase = await createClient();
+  const [cuentasRes, txRes] = await Promise.all([
+    supabase
+      .from("cuentas")
+      .select("id", { count: "exact", head: true })
+      .eq("usuario_id", userId),
+    supabase
+      .from("transacciones")
+      .select("id", { count: "exact", head: true })
+      .eq("usuario_id", userId),
+  ]);
+  return {
+    cuentaCount: cuentasRes.count ?? 0,
+    transaccionCount: txRes.count ?? 0,
+  };
+}
+
+// ── Resumen anual (totales y por categoría) ───────────────────────────────────
+
+export interface CategoriaMontoPorMoneda {
+  nombre: string;
+  ARS: number;
+  USD: number;
+}
+
+export interface ResumenAnualData {
+  year: number;
+  totales: {
+    ingresos: { ARS: number; USD: number };
+    egresos: { ARS: number; USD: number };
+    transferenciasCount: number;
+  };
+  egresosPorCategoria: CategoriaMontoPorMoneda[];
+  ingresosPorCategoria: CategoriaMontoPorMoneda[];
+}
+
+function sortCategoriasPorMonto(
+  list: CategoriaMontoPorMoneda[]
+): CategoriaMontoPorMoneda[] {
+  return [...list].sort((a, b) => {
+    if (b.ARS !== a.ARS) return b.ARS - a.ARS;
+    return b.USD - a.USD;
+  });
+}
+
+export async function getResumenAnual(
+  userId: string,
+  year: number
+): Promise<ResumenAnualData> {
+  const supabase = await createClient();
+  const desde = `${year}-01-01`;
+  const hasta = `${year}-12-31`;
+
+  const { data } = await supabase
+    .from("transacciones")
+    .select("monto, tipo, moneda, categorias(nombre)")
+    .eq("usuario_id", userId)
+    .gte("fecha", desde)
+    .lte("fecha", hasta);
+
+  const rows = (data ?? []) as {
+    monto: number | string;
+    tipo: string;
+    moneda: string;
+    categorias: { nombre: string } | null;
+  }[];
+
+  const totales = {
+    ingresos: { ARS: 0 as number, USD: 0 as number },
+    egresos: { ARS: 0 as number, USD: 0 as number },
+    transferenciasCount: 0,
+  };
+
+  const catIngresos = new Map<string, { ARS: number; USD: number }>();
+  const catEgresos = new Map<string, { ARS: number; USD: number }>();
+
+  for (const r of rows) {
+    const monto = Number(r.monto);
+    const moneda = r.moneda === "USD" ? "USD" : "ARS";
+    if (r.tipo === "transferencia") {
+      totales.transferenciasCount += 1;
+      continue;
+    }
+    const catNombre =
+      r.categorias?.nombre?.trim() || "Sin categoría";
+
+    if (r.tipo === "ingreso") {
+      totales.ingresos[moneda] += monto;
+      const cur = catIngresos.get(catNombre) ?? { ARS: 0, USD: 0 };
+      cur[moneda] += monto;
+      catIngresos.set(catNombre, cur);
+    } else if (r.tipo === "egreso") {
+      totales.egresos[moneda] += monto;
+      const cur = catEgresos.get(catNombre) ?? { ARS: 0, USD: 0 };
+      cur[moneda] += monto;
+      catEgresos.set(catNombre, cur);
+    }
+  }
+
+  const ingresosPorCategoria = sortCategoriasPorMonto(
+    [...catIngresos.entries()].map(([nombre, v]) => ({ nombre, ...v }))
+  );
+  const egresosPorCategoria = sortCategoriasPorMonto(
+    [...catEgresos.entries()].map(([nombre, v]) => ({ nombre, ...v }))
+  );
+
+  return {
+    year,
+    totales,
+    egresosPorCategoria,
+    ingresosPorCategoria,
+  };
+}
+
+// ── Gastos en cuotas (ARS) ───────────────────────────────────────────────────
+
+export interface GastoCuotaListItem {
+  id: string;
+  descripcion: string;
+  monto_cuota: number;
+  cantidad_cuotas: number;
+  cuotas_pagadas: number;
+  fecha_primera_cuota: string;
+  activo: boolean;
+  cuenta_id: string;
+  cuenta_nombre: string;
+  categoria_id: string | null;
+  categoria_nombre: string | null;
+  proxima_fecha: string | null;
+  monto_restante: number;
+  completado: boolean;
+}
+
+export async function getGastosCuotas(
+  userId: string
+): Promise<GastoCuotaListItem[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("gastos_cuotas")
+    .select(
+      "id, descripcion, monto_cuota, cantidad_cuotas, cuotas_pagadas, fecha_primera_cuota, activo, cuenta_id, categoria_id, cuentas(nombre), categorias(nombre)"
+    )
+    .eq("usuario_id", userId)
+    .order("activo", { ascending: false })
+    .order("fecha_primera_cuota", { ascending: true });
+
+  if (error || !data) return [];
+
+  return (data as any[]).map((row) => {
+    const monto_cuota = Number(row.monto_cuota);
+    const cantidad = Number(row.cantidad_cuotas);
+    const pagadas = Number(row.cuotas_pagadas);
+    const completado = pagadas >= cantidad || !row.activo;
+    const proxima_fecha = completado
+      ? null
+      : fechaProximaCuota(row.fecha_primera_cuota, pagadas, cantidad);
+    const monto_restante = Math.max(0, cantidad - pagadas) * monto_cuota;
+    return {
+      id: row.id,
+      descripcion: row.descripcion,
+      monto_cuota,
+      cantidad_cuotas: cantidad,
+      cuotas_pagadas: pagadas,
+      fecha_primera_cuota: row.fecha_primera_cuota,
+      activo: row.activo,
+      cuenta_id: row.cuenta_id,
+      cuenta_nombre: row.cuentas?.nombre ?? "—",
+      categoria_id: row.categoria_id ?? null,
+      categoria_nombre: row.categorias?.nombre ?? null,
+      proxima_fecha,
+      monto_restante,
+      completado,
+    };
+  });
 }

@@ -44,6 +44,8 @@ interface Props {
   cuentasIniciales?: CuentaResumen[];
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Tras registrar la transacción con éxito (antes de cerrar). */
+  onSuccess?: () => void;
   compact?: boolean;
 }
 
@@ -51,6 +53,7 @@ export function NuevaTransaccionDialog({
   cuentasIniciales,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  onSuccess,
   compact = false,
 }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
@@ -165,6 +168,7 @@ export function NuevaTransaccionDialog({
             ? "¡Ingreso registrado!"
             : "¡Egreso registrado!"
         );
+        onSuccess?.();
         handleOpenChange(false);
       }
     });

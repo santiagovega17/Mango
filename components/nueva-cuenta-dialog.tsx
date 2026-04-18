@@ -37,6 +37,8 @@ interface Props {
   /** Si se pasa, el botón disparador es controlado externamente */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Se llama tras crear la cuenta con éxito (antes de cerrar el diálogo). */
+  onSuccess?: () => void;
   /** Personalización del trigger por defecto */
   triggerLabel?: string;
   triggerVariant?: "default" | "outline" | "ghost";
@@ -46,6 +48,7 @@ interface Props {
 export function NuevaCuentaDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  onSuccess,
   triggerLabel = "Nueva cuenta",
   triggerVariant = "outline",
   triggerSize = "sm",
@@ -96,6 +99,7 @@ export function NuevaCuentaDialog({
         toast.error(result.error);
       } else {
         toast.success("¡Cuenta creada con éxito!");
+        onSuccess?.();
         handleOpenChange(false);
       }
     });

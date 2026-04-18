@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { CuentaResumen } from "@/lib/data";
+import { esCuentaBrokerInversion } from "@/lib/cuenta-tipo";
 import { parseFormDecimal } from "@/lib/form-numbers";
+import { fechaProximaCuota } from "@/lib/cuotas-utils";
 
 type ActionResult =
   | { error: string; success?: never }
@@ -196,6 +198,7 @@ export async function crearInversion(
 
     const nombre_activo = required(formData.get("nombre_activo"), "Nombre del activo");
     const tipo_activo = required(formData.get("tipo_activo"), "Tipo de activo");
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta broker");
     const moneda = required(formData.get("moneda"), "Moneda") as "ARS" | "USD";
     const cantidadRaw = required(formData.get("cantidad"), "Cantidad");
     const precioCompraRaw = required(formData.get("precio_compra"), "Precio de compra");
@@ -217,8 +220,31 @@ export async function crearInversion(
     if (!["ARS", "USD"].includes(moneda))
       return { error: "La moneda debe ser ARS o USD." };
 
+    const { data: cuenta, error: cuentaErr } = await supabase
+      .from("cuentas")
+      .select("id, moneda, tipo")
+      .eq("id", cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (cuentaErr || !cuenta)
+      return { error: "La cuenta broker no existe o no te pertenece." };
+    if (!esCuentaBrokerInversion(cuenta.tipo)) {
+      return {
+        error:
+          "Elegí una cuenta tipo «Cuenta de inversión» (broker). Podés crearla en Configuración.",
+      };
+    }
+    if (cuenta.moneda !== moneda) {
+      return {
+        error:
+          "La moneda del activo debe ser la misma que la de la cuenta broker.",
+      };
+    }
+
     const { error: insertError } = await supabase.from("inversiones").insert({
       usuario_id: user.id,
+      cuenta_id,
       nombre_activo,
       tipo_activo,
       moneda,
@@ -464,6 +490,337 @@ export async function crearTransferencia(
       return { error: "No se pudo registrar la transferencia." };
     }
 
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+// ── GASTOS EN CUOTAS (ARS) ───────────────────────────────────────────────────
+
+const MAX_CUOTAS_PLAN = 600;
+
+export async function crearGastoCuota(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta");
+    const descripcion = required(formData.get("descripcion"), "Descripción");
+    const montoTotalRaw = required(formData.get("monto_total"), "Monto total");
+    const cantidadRaw = required(
+      formData.get("cantidad_cuotas"),
+      "Cantidad de cuotas"
+    );
+    const fecha_primera = required(
+      formData.get("fecha_primera_cuota"),
+      "Primera cuota"
+    );
+    const categoria_id =
+      (formData.get("categoria_id") as string)?.trim() || null;
+
+    const monto_total = parseFormDecimal(montoTotalRaw);
+    if (isNaN(monto_total) || monto_total <= 0)
+      return { error: "El monto total debe ser mayor a 0." };
+
+    const cantidad_cuotas = parseInt(cantidadRaw, 10);
+    if (
+      !Number.isFinite(cantidad_cuotas) ||
+      cantidad_cuotas < 1 ||
+      cantidad_cuotas > MAX_CUOTAS_PLAN
+    ) {
+      return {
+        error: `La cantidad de cuotas debe ser entre 1 y ${MAX_CUOTAS_PLAN}.`,
+      };
+    }
+
+    const monto_cuota =
+      Math.round((monto_total / cantidad_cuotas) * 100) / 100;
+    if (!Number.isFinite(monto_cuota) || monto_cuota <= 0)
+      return { error: "El monto por cuota calculado no es válido." };
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_primera))
+      return { error: "La fecha de la primera cuota no es válida." };
+
+    const { data: cuenta, error: cuentaErr } = await supabase
+      .from("cuentas")
+      .select("id, moneda")
+      .eq("id", cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (cuentaErr || !cuenta)
+      return { error: "La cuenta no existe o no te pertenece." };
+    if (cuenta.moneda !== "ARS")
+      return { error: "Los planes en cuotas solo admiten cuentas en pesos (ARS)." };
+
+    const { error } = await supabase.from("gastos_cuotas").insert({
+      usuario_id: user.id,
+      cuenta_id,
+      categoria_id: categoria_id || null,
+      descripcion,
+      monto_cuota,
+      cantidad_cuotas,
+      cuotas_pagadas: 0,
+      fecha_primera_cuota: fecha_primera,
+      activo: true,
+    });
+
+    if (error) {
+      console.error("Supabase crearGastoCuota:", error);
+      return { error: "No se pudo crear el plan. Intentá de nuevo." };
+    }
+
+    revalidatePath("/cuotas");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function editarGastoCuota(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const gasto_cuota_id = required(formData.get("gasto_cuota_id"), "Plan");
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta");
+    const descripcion = required(formData.get("descripcion"), "Descripción");
+    const montoTotalRaw = required(formData.get("monto_total"), "Monto total");
+    const cantidadRaw = required(
+      formData.get("cantidad_cuotas"),
+      "Cantidad de cuotas"
+    );
+    const fecha_primera = required(
+      formData.get("fecha_primera_cuota"),
+      "Primera cuota"
+    );
+    const categoria_id =
+      (formData.get("categoria_id") as string)?.trim() || null;
+
+    const { data: existente, error: exErr } = await supabase
+      .from("gastos_cuotas")
+      .select("cuotas_pagadas")
+      .eq("id", gasto_cuota_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (exErr || !existente)
+      return { error: "El plan no existe o no te pertenece." };
+
+    const pagadas = Number(existente.cuotas_pagadas);
+
+    const monto_total = parseFormDecimal(montoTotalRaw);
+    if (isNaN(monto_total) || monto_total <= 0)
+      return { error: "El monto total debe ser mayor a 0." };
+
+    const cantidad_cuotas = parseInt(cantidadRaw, 10);
+    if (
+      !Number.isFinite(cantidad_cuotas) ||
+      cantidad_cuotas < 1 ||
+      cantidad_cuotas > MAX_CUOTAS_PLAN
+    ) {
+      return {
+        error: `La cantidad de cuotas debe ser entre 1 y ${MAX_CUOTAS_PLAN}.`,
+      };
+    }
+
+    if (cantidad_cuotas < pagadas) {
+      return {
+        error: "La cantidad de cuotas no puede ser menor a las cuotas ya pagadas.",
+      };
+    }
+
+    const monto_cuota =
+      Math.round((monto_total / cantidad_cuotas) * 100) / 100;
+    if (!Number.isFinite(monto_cuota) || monto_cuota <= 0)
+      return { error: "El monto por cuota calculado no es válido." };
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_primera))
+      return { error: "La fecha de la primera cuota no es válida." };
+
+    const { data: cuenta, error: cuentaErr } = await supabase
+      .from("cuentas")
+      .select("id, moneda")
+      .eq("id", cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (cuentaErr || !cuenta)
+      return { error: "La cuenta no existe o no te pertenece." };
+    if (cuenta.moneda !== "ARS")
+      return { error: "Los planes en cuotas solo admiten cuentas en pesos (ARS)." };
+
+    const terminado = pagadas >= cantidad_cuotas;
+
+    const { error } = await supabase
+      .from("gastos_cuotas")
+      .update({
+        cuenta_id,
+        categoria_id: categoria_id || null,
+        descripcion,
+        monto_cuota,
+        cantidad_cuotas,
+        fecha_primera_cuota: fecha_primera,
+        activo: !terminado,
+      })
+      .eq("id", gasto_cuota_id)
+      .eq("usuario_id", user.id);
+
+    if (error) {
+      console.error("Supabase editarGastoCuota:", error);
+      return { error: "No se pudo actualizar el plan. Intentá de nuevo." };
+    }
+
+    revalidatePath("/cuotas");
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function pagarCuotaGasto(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const gasto_cuota_id = required(formData.get("gasto_cuota_id"), "Plan");
+    const fechaRaw = (formData.get("fecha") as string)?.trim() || "";
+
+    const { data: plan, error: planErr } = await supabase
+      .from("gastos_cuotas")
+      .select(
+        "id, cuenta_id, categoria_id, descripcion, monto_cuota, cantidad_cuotas, cuotas_pagadas, activo, fecha_primera_cuota"
+      )
+      .eq("id", gasto_cuota_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (planErr || !plan)
+      return { error: "El plan no existe o no te pertenece." };
+    if (!plan.activo || plan.cuotas_pagadas >= plan.cantidad_cuotas) {
+      return { error: "Este plan no tiene cuotas pendientes." };
+    }
+
+    const { data: cuenta, error: cuentaErr } = await supabase
+      .from("cuentas")
+      .select("moneda")
+      .eq("id", plan.cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (cuentaErr || !cuenta || cuenta.moneda !== "ARS") {
+      return { error: "La cuenta del plan debe ser en ARS." };
+    }
+
+    const monto = Number(plan.monto_cuota);
+    if (!Number.isFinite(monto) || monto <= 0)
+      return { error: "Monto de cuota inválido en el plan." };
+
+    const pagadas = plan.cuotas_pagadas;
+    const cantidad = plan.cantidad_cuotas;
+    const proxima = fechaProximaCuota(
+      plan.fecha_primera_cuota,
+      pagadas,
+      cantidad
+    );
+    if (!proxima)
+      return { error: "Este plan no tiene cuotas pendientes." };
+
+    let fecha = fechaRaw;
+    if (fecha && !/^\d{4}-\d{2}-\d{2}$/.test(fecha))
+      return { error: "La fecha no es válida." };
+    if (!fecha) fecha = proxima;
+
+    const nuevaPagada = pagadas + 1;
+    const descripcionTx = `${plan.descripcion} — Cuota ${nuevaPagada}/${cantidad}`;
+
+    const { data: inserted, error: insErr } = await supabase
+      .from("transacciones")
+      .insert({
+        usuario_id: user.id,
+        cuenta_id: plan.cuenta_id,
+        tipo: "egreso" as const,
+        moneda: "ARS" as const,
+        monto,
+        descripcion: descripcionTx,
+        fecha,
+        categoria_id: plan.categoria_id,
+        gasto_cuota_id,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (insErr || !inserted?.id) {
+      console.error("Supabase pagarCuotaGasto insert:", insErr);
+      return { error: "No se pudo registrar el egreso. Intentá de nuevo." };
+    }
+
+    const terminado = nuevaPagada >= cantidad;
+    const { data: updated, error: updErr } = await supabase
+      .from("gastos_cuotas")
+      .update({
+        cuotas_pagadas: nuevaPagada,
+        activo: !terminado,
+      })
+      .eq("id", gasto_cuota_id)
+      .eq("usuario_id", user.id)
+      .eq("cuotas_pagadas", pagadas)
+      .select("id")
+      .maybeSingle();
+
+    if (updErr || !updated) {
+      await supabase
+        .from("transacciones")
+        .delete()
+        .eq("id", inserted.id)
+        .eq("usuario_id", user.id);
+      return {
+        error:
+          "No se pudo confirmar el pago (otro proceso modificó el plan). Reintentá.",
+      };
+    }
+
+    revalidatePath("/cuotas");
+    revalidatePath("/transacciones");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function eliminarGastoCuota(
+  gastoCuotaId: string
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const { data, error } = await supabase
+      .from("gastos_cuotas")
+      .delete()
+      .eq("id", gastoCuotaId)
+      .eq("usuario_id", user.id)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase eliminarGastoCuota:", error);
+      return { error: "No se pudo eliminar el plan." };
+    }
+
+    if (!data)
+      return { error: "El plan no existe o no te pertenece." };
+
+    revalidatePath("/cuotas");
     revalidatePath("/dashboard");
     revalidatePath("/transacciones");
     return { success: true };

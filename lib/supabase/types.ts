@@ -82,6 +82,7 @@ export interface Database {
           usuario_id: string;
           cuenta_id: string;
           categoria_id: string | null;
+          gasto_cuota_id: string | null;
           monto: number;
           tipo: TransaccionTipo;
           moneda: MonedaTipo;
@@ -94,6 +95,7 @@ export interface Database {
           usuario_id: string;
           cuenta_id: string;
           categoria_id?: string | null;
+          gasto_cuota_id?: string | null;
           monto: number;
           tipo: TransaccionTipo;
           moneda: MonedaTipo;
@@ -104,6 +106,7 @@ export interface Database {
         Update: {
           cuenta_id?: string;
           categoria_id?: string | null;
+          gasto_cuota_id?: string | null;
           monto?: number;
           tipo?: TransaccionTipo;
           moneda?: MonedaTipo;
@@ -111,10 +114,52 @@ export interface Database {
           fecha?: string;
         };
       };
+      gastos_cuotas: {
+        Row: {
+          id: string;
+          usuario_id: string;
+          cuenta_id: string;
+          categoria_id: string | null;
+          descripcion: string;
+          monto_cuota: number;
+          cantidad_cuotas: number;
+          cuotas_pagadas: number;
+          fecha_primera_cuota: string;
+          activo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id: string;
+          cuenta_id: string;
+          categoria_id?: string | null;
+          descripcion: string;
+          monto_cuota: number;
+          cantidad_cuotas: number;
+          cuotas_pagadas?: number;
+          fecha_primera_cuota: string;
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          cuenta_id?: string;
+          categoria_id?: string | null;
+          descripcion?: string;
+          monto_cuota?: number;
+          cantidad_cuotas?: number;
+          cuotas_pagadas?: number;
+          fecha_primera_cuota?: string;
+          activo?: boolean;
+          updated_at?: string;
+        };
+      };
       inversiones: {
         Row: {
           id: string;
           usuario_id: string;
+          cuenta_id: string | null;
           nombre_activo: string;
           cantidad: number;
           precio_compra: number;
@@ -126,6 +171,7 @@ export interface Database {
         Insert: {
           id?: string;
           usuario_id: string;
+          cuenta_id?: string | null;
           nombre_activo: string;
           cantidad: number;
           precio_compra: number;
@@ -135,6 +181,7 @@ export interface Database {
           created_at?: string;
         };
         Update: {
+          cuenta_id?: string | null;
           nombre_activo?: string;
           cantidad?: number;
           precio_compra?: number;

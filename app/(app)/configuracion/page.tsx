@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getCuentasUsuario } from "@/lib/data";
+import { getCuentasConSaldoDisponible } from "@/lib/data";
 import { formatCurrency } from "@/lib/utils";
 import {
   Card,
@@ -78,8 +78,8 @@ export default async function ConfiguracionPage() {
     .eq("id", user!.id)
     .single();
 
-  // Cuentas del usuario
-  const cuentas = await getCuentasUsuario(user!.id);
+  // Cuentas del usuario (con saldo actual para listado y totales)
+  const cuentas = await getCuentasConSaldoDisponible(user!.id);
 
   const nombre = perfil?.nombre ?? user!.email?.split("@")[0] ?? "Usuario";
   const monedaPrincipal =
@@ -95,10 +95,16 @@ export default async function ConfiguracionPage() {
 
   const totalARS = cuentas
     .filter((c) => c.moneda === "ARS")
-    .reduce((acc, c) => acc + Number(c.saldo_inicial), 0);
+    .reduce(
+      (acc, c) => acc + (c.saldo_disponible ?? Number(c.saldo_inicial)),
+      0
+    );
   const totalUSD = cuentas
     .filter((c) => c.moneda === "USD")
-    .reduce((acc, c) => acc + Number(c.saldo_inicial), 0);
+    .reduce(
+      (acc, c) => acc + (c.saldo_disponible ?? Number(c.saldo_inicial)),
+      0
+    );
 
   return (
     <div className="space-y-8">
@@ -270,10 +276,11 @@ export default async function ConfiguracionPage() {
                               {cuenta.moneda}
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              Saldo inicial:{" "}
+                              Saldo actual:{" "}
                               <span className="text-foreground font-medium tabular-nums">
                                 {formatCurrency(
-                                  Number(cuenta.saldo_inicial),
+                                  cuenta.saldo_disponible ??
+                                    Number(cuenta.saldo_inicial),
                                   cuenta.moneda
                                 )}
                               </span>
@@ -294,7 +301,7 @@ export default async function ConfiguracionPage() {
 
                   {/* Footer con totales por moneda */}
                   <div className="grid grid-cols-2 gap-3 pt-2">
-                    {totalARS > 0 && (
+                    {cuentas.some((c) => c.moneda === "ARS") && (
                       <div className="rounded-lg bg-sky-400/5 border border-sky-400/15 px-3 py-2.5">
                         <p className="text-xs text-muted-foreground">
                           Fondos en ARS
@@ -304,7 +311,7 @@ export default async function ConfiguracionPage() {
                         </p>
                       </div>
                     )}
-                    {totalUSD > 0 && (
+                    {cuentas.some((c) => c.moneda === "USD") && (
                       <div className="rounded-lg bg-emerald-400/5 border border-emerald-400/15 px-3 py-2.5">
                         <p className="text-xs text-muted-foreground">
                           Fondos en USD

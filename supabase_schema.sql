@@ -104,6 +104,39 @@ CREATE INDEX IF NOT EXISTS idx_transacciones_tipo     ON public.transacciones(ti
 
 
 -- ---------------------------------------------------------------------------
+-- TABLA: gastos_cuotas
+-- Plan de cuotas en ARS: cada pago genera un egreso en transacciones.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.gastos_cuotas (
+  id                 UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+  usuario_id         UUID           NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+  cuenta_id          UUID           NOT NULL REFERENCES public.cuentas(id) ON DELETE RESTRICT,
+  categoria_id       UUID           REFERENCES public.categorias(id) ON DELETE SET NULL,
+  descripcion        TEXT           NOT NULL,
+  monto_cuota        NUMERIC(15, 2) NOT NULL CHECK (monto_cuota > 0),
+  cantidad_cuotas    INTEGER        NOT NULL CHECK (cantidad_cuotas >= 1),
+  cuotas_pagadas     INTEGER        NOT NULL DEFAULT 0 CHECK (cuotas_pagadas >= 0),
+  fecha_primera_cuota DATE         NOT NULL,
+  activo             BOOLEAN        NOT NULL DEFAULT TRUE,
+  created_at         TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+  updated_at         TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
+  CONSTRAINT gastos_cuotas_cuotas_check CHECK (cuotas_pagadas <= cantidad_cuotas)
+);
+
+COMMENT ON TABLE public.gastos_cuotas IS
+  'Gastos en cuotas (solo ARS). Al registrar un pago se inserta un egreso vinculado.';
+
+CREATE INDEX IF NOT EXISTS idx_gastos_cuotas_usuario ON public.gastos_cuotas(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_gastos_cuotas_cuenta ON public.gastos_cuotas(cuenta_id);
+
+ALTER TABLE public.transacciones
+  ADD COLUMN IF NOT EXISTS gasto_cuota_id UUID REFERENCES public.gastos_cuotas(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_transacciones_gasto_cuota ON public.transacciones(gasto_cuota_id);
+
+
+-- ---------------------------------------------------------------------------
 -- TABLA: inversiones
 -- Activos de inversión: acciones, criptomonedas, plazos fijos, etc.
 -- ---------------------------------------------------------------------------
@@ -124,6 +157,14 @@ COMMENT ON TABLE public.inversiones IS
 
 CREATE INDEX IF NOT EXISTS idx_inversiones_usuario ON public.inversiones(usuario_id);
 
+ALTER TABLE public.inversiones
+  ADD COLUMN IF NOT EXISTS cuenta_id UUID REFERENCES public.cuentas(id) ON DELETE RESTRICT;
+
+CREATE INDEX IF NOT EXISTS idx_inversiones_cuenta ON public.inversiones(cuenta_id);
+
+COMMENT ON COLUMN public.inversiones.cuenta_id IS
+  'Cuenta tipo inversión (broker) donde está la posición.';
+
 
 -- =============================================================================
 -- ROW LEVEL SECURITY (RLS)
@@ -134,6 +175,7 @@ ALTER TABLE public.usuarios     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.cuentas      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categorias   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transacciones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.gastos_cuotas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inversiones  ENABLE ROW LEVEL SECURITY;
 
 
@@ -235,6 +277,28 @@ CREATE POLICY "transacciones_update_own"
 
 CREATE POLICY "transacciones_delete_own"
   ON public.transacciones FOR DELETE
+  USING (auth.uid() = usuario_id);
+
+
+-- ---------------------------------------------------------------------------
+-- POLÍTICAS: gastos_cuotas
+-- ---------------------------------------------------------------------------
+
+CREATE POLICY "gastos_cuotas_select_own"
+  ON public.gastos_cuotas FOR SELECT
+  USING (auth.uid() = usuario_id);
+
+CREATE POLICY "gastos_cuotas_insert_own"
+  ON public.gastos_cuotas FOR INSERT
+  WITH CHECK (auth.uid() = usuario_id);
+
+CREATE POLICY "gastos_cuotas_update_own"
+  ON public.gastos_cuotas FOR UPDATE
+  USING (auth.uid() = usuario_id)
+  WITH CHECK (auth.uid() = usuario_id);
+
+CREATE POLICY "gastos_cuotas_delete_own"
+  ON public.gastos_cuotas FOR DELETE
   USING (auth.uid() = usuario_id);
 
 
