@@ -15,6 +15,7 @@ import {
   User,
   CalendarRange,
   CalendarClock,
+  Banknote,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ const navLinks = [
   { href: "/transacciones", label: "Transacciones", icon: ArrowLeftRight },
   { href: "/inversiones", label: "Inversiones", icon: TrendingUp },
   { href: "/cuotas", label: "Cuotas", icon: CalendarClock },
+  { href: "/por-cobrar", label: "Por cobrar", icon: Banknote },
   { href: "/resumen", label: "Resumen anual", icon: CalendarRange },
   { href: "/configuracion", label: "Configuración", icon: Settings },
 ];

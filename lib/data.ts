@@ -64,6 +64,11 @@ export interface DashboardData {
   cuentas: CuentaResumen[];
   transaccionesRecientes: TransaccionReciente[];
   mesActual: string; // "Abril 2026"
+  /** Suma de ingresos futuros pendientes (no liquidados). */
+  porCobrarARS: number;
+  porCobrarUSD: number;
+  /** porCobrarARS + porCobrarUSD × blue venta; null si no hay cotización */
+  totalPorCobrarEnARS: number | null;
 }
 
 // ── Helper: nombre del mes actual ────────────────────────────────────────────
@@ -222,8 +227,15 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   const { desde, hasta } = getRangoMesActual();
 
   // Ejecutamos todas las queries en paralelo para minimizar latencia
-  const [cuentasResult, txTodoResult, txMesResult, txRecentResult, invResult, dolarBlue] =
-    await Promise.all([
+  const [
+    cuentasResult,
+    txTodoResult,
+    txMesResult,
+    txRecentResult,
+    invResult,
+    dolarBlue,
+    ingresosFuturosPend,
+  ] = await Promise.all([
       // 1. Todas las cuentas del usuario
       supabase
         .from("cuentas")
@@ -263,6 +275,12 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
         .eq("usuario_id", userId),
 
       fetchDolarBlue(),
+
+      supabase
+        .from("ingresos_futuros")
+        .select("monto, moneda")
+        .eq("usuario_id", userId)
+        .is("cobrado_at", null),
     ]);
 
   const cuentas = (cuentasResult.data ?? []) as CuentaResumen[];
@@ -406,6 +424,22 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
   const egresosARS = sumarPorTipo(txMes, "egreso", "ARS");
   const egresosUSD = sumarPorTipo(txMes, "egreso", "USD");
 
+  const rowsPorCobrar = (ingresosFuturosPend.data ?? []) as {
+    monto: number | string;
+    moneda: string;
+  }[];
+  let porCobrarARS = 0;
+  let porCobrarUSD = 0;
+  for (const r of rowsPorCobrar) {
+    const m = Number(r.monto);
+    if (r.moneda === "USD") porCobrarUSD += m;
+    else porCobrarARS += m;
+  }
+  const totalPorCobrarEnARS =
+    blueVenta != null && blueVenta > 0
+      ? porCobrarARS + porCobrarUSD * blueVenta
+      : null;
+
   // ── Formatear transacciones recientes ─────────────────────────────────────
   const transaccionesRecientes: TransaccionReciente[] = txRecent.map((t: any) => ({
     id: t.id,
@@ -467,6 +501,89 @@ export async function getDashboardData(userId: string): Promise<DashboardData> {
     cuentas: cuentasConSaldo,
     transaccionesRecientes,
     mesActual: getMesActual(),
+    porCobrarARS,
+    porCobrarUSD,
+    totalPorCobrarEnARS,
+  };
+}
+
+// ── Ingresos futuros (por cobrar) ───────────────────────────────────────────
+
+export interface IngresoFuturoListItem {
+  id: string;
+  monto: number;
+  moneda: MonedaTipo;
+  descripcion: string | null;
+  fecha_esperada: string | null;
+  cuenta_id: string;
+  cuenta_nombre: string;
+  cobrado_at: string | null;
+  transaccion_id: string | null;
+  /** Fecha contable del ingreso cuando ya se cobró. */
+  fecha_cobro: string | null;
+}
+
+export async function getIngresosFuturos(
+  userId: string
+): Promise<{ pendientes: IngresoFuturoListItem[]; cobrados: IngresoFuturoListItem[] }> {
+  const supabase = await createClient();
+
+  const [pendRes, cobRes] = await Promise.all([
+    supabase
+      .from("ingresos_futuros")
+      .select(
+        "id, monto, moneda, descripcion, fecha_esperada, cuenta_id, cobrado_at, transaccion_id, cuentas(nombre)"
+      )
+      .eq("usuario_id", userId)
+      .is("cobrado_at", null)
+      .order("fecha_esperada", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
+
+    supabase
+      .from("ingresos_futuros")
+      .select(
+        "id, monto, moneda, descripcion, fecha_esperada, cuenta_id, cobrado_at, transaccion_id, cuentas(nombre), transacciones(fecha)"
+      )
+      .eq("usuario_id", userId)
+      .not("cobrado_at", "is", null)
+      .order("cobrado_at", { ascending: false })
+      .limit(25),
+  ]);
+
+  function mapPendiente(row: any): IngresoFuturoListItem {
+    return {
+      id: row.id,
+      monto: Number(row.monto),
+      moneda: row.moneda as MonedaTipo,
+      descripcion: row.descripcion ?? null,
+      fecha_esperada: row.fecha_esperada ?? null,
+      cuenta_id: row.cuenta_id,
+      cuenta_nombre: row.cuentas?.nombre ?? "—",
+      cobrado_at: row.cobrado_at ?? null,
+      transaccion_id: row.transaccion_id ?? null,
+      fecha_cobro: null,
+    };
+  }
+
+  function mapCobrado(row: any): IngresoFuturoListItem {
+    const txFecha = row.transacciones?.fecha ?? null;
+    return {
+      id: row.id,
+      monto: Number(row.monto),
+      moneda: row.moneda as MonedaTipo,
+      descripcion: row.descripcion ?? null,
+      fecha_esperada: row.fecha_esperada ?? null,
+      cuenta_id: row.cuenta_id,
+      cuenta_nombre: row.cuentas?.nombre ?? "—",
+      cobrado_at: row.cobrado_at ?? null,
+      transaccion_id: row.transaccion_id ?? null,
+      fecha_cobro: txFecha,
+    };
+  }
+
+  return {
+    pendientes: (pendRes.data ?? []).map(mapPendiente),
+    cobrados: (cobRes.data ?? []).map(mapCobrado),
   };
 }
 

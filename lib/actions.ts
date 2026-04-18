@@ -866,3 +866,296 @@ export async function obtenerCuentasAction(): Promise<CuentaResumen[]> {
     return [];
   }
 }
+
+// ── INGRESOS FUTUROS (por cobrar) ─────────────────────────────────────────────
+
+export async function crearIngresoFuturo(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta");
+    const moneda = required(formData.get("moneda"), "Moneda") as "ARS" | "USD";
+    const montoRaw = required(formData.get("monto"), "Monto");
+    const monto = parseFormDecimal(montoRaw);
+    const descripcion = (formData.get("descripcion") as string)?.trim() || null;
+    const fechaEsperadaRaw = (formData.get("fecha_esperada") as string)?.trim();
+    const fecha_esperada =
+      fechaEsperadaRaw && /^\d{4}-\d{2}-\d{2}$/.test(fechaEsperadaRaw)
+        ? fechaEsperadaRaw
+        : null;
+
+    if (isNaN(monto) || monto <= 0) {
+      return { error: "El monto debe ser un número mayor a 0." };
+    }
+    if (!["ARS", "USD"].includes(moneda)) {
+      return { error: "La moneda debe ser ARS o USD." };
+    }
+
+    const { data: cuenta, error: cuErr } = await supabase
+      .from("cuentas")
+      .select("id, moneda")
+      .eq("id", cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (cuErr || !cuenta) {
+      return { error: "No se encontró la cuenta." };
+    }
+    if (cuenta.moneda !== moneda) {
+      return { error: "Elegí una cuenta en la misma moneda que el ingreso." };
+    }
+
+    const { error } = await supabase.from("ingresos_futuros").insert({
+      usuario_id: user.id,
+      cuenta_id,
+      monto,
+      moneda,
+      descripcion,
+      fecha_esperada,
+    });
+
+    if (error) {
+      console.error("Supabase crearIngresoFuturo:", error);
+      return {
+        error:
+          "No se pudo guardar el ingreso pendiente. ¿Ejecutaste la migración SQL en Supabase?",
+      };
+    }
+
+    revalidatePath("/por-cobrar");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function editarIngresoFuturo(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const id = required(formData.get("ingreso_futuro_id"), "Ingreso");
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta");
+    const moneda = required(formData.get("moneda"), "Moneda") as "ARS" | "USD";
+    const montoRaw = required(formData.get("monto"), "Monto");
+    const monto = parseFormDecimal(montoRaw);
+    const descripcion = (formData.get("descripcion") as string)?.trim() || null;
+    const fechaEsperadaRaw = (formData.get("fecha_esperada") as string)?.trim();
+    const fecha_esperada =
+      fechaEsperadaRaw && /^\d{4}-\d{2}-\d{2}$/.test(fechaEsperadaRaw)
+        ? fechaEsperadaRaw
+        : null;
+
+    if (isNaN(monto) || monto <= 0) {
+      return { error: "El monto debe ser un número mayor a 0." };
+    }
+    if (!["ARS", "USD"].includes(moneda)) {
+      return { error: "La moneda debe ser ARS o USD." };
+    }
+
+    const { data: pend, error: peErr } = await supabase
+      .from("ingresos_futuros")
+      .select("id, cobrado_at")
+      .eq("id", id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (peErr || !pend) {
+      return { error: "No se encontró el ingreso pendiente." };
+    }
+    if (pend.cobrado_at) {
+      return { error: "No se puede editar un ingreso ya cobrado." };
+    }
+
+    const { data: cuenta, error: cuErr } = await supabase
+      .from("cuentas")
+      .select("id, moneda")
+      .eq("id", cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (cuErr || !cuenta) {
+      return { error: "No se encontró la cuenta." };
+    }
+    if (cuenta.moneda !== moneda) {
+      return { error: "Elegí una cuenta en la misma moneda que el ingreso." };
+    }
+
+    const { data: updated, error } = await supabase
+      .from("ingresos_futuros")
+      .update({
+        cuenta_id,
+        moneda,
+        monto,
+        descripcion,
+        fecha_esperada,
+      })
+      .eq("id", id)
+      .eq("usuario_id", user.id)
+      .is("cobrado_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase editarIngresoFuturo:", error);
+      return { error: "No se pudo actualizar el ingreso pendiente." };
+    }
+    if (!updated) {
+      return {
+        error:
+          "No se actualizó nada: puede que el ingreso ya se haya cobrado. Refrescá la página.",
+      };
+    }
+
+    revalidatePath("/por-cobrar");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function cobrarIngresoFuturo(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const ingresoId = required(formData.get("ingreso_futuro_id"), "Ingreso");
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta");
+    const fechaRaw = (formData.get("fecha") as string)?.trim();
+    const montoRaw = required(formData.get("monto"), "Monto");
+    const monto = parseFormDecimal(montoRaw);
+    const categoria_id =
+      (formData.get("categoria_id") as string)?.trim() || null;
+    const descripcionForm = (formData.get("descripcion") as string)?.trim();
+
+    if (isNaN(monto) || monto <= 0) {
+      return { error: "El monto debe ser un número mayor a 0." };
+    }
+
+    const { data: row, error: fetchErr } = await supabase
+      .from("ingresos_futuros")
+      .select("id, moneda, cobrado_at, descripcion")
+      .eq("id", ingresoId)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (fetchErr || !row) {
+      return { error: "No se encontró el ingreso pendiente." };
+    }
+    if (row.cobrado_at) {
+      return { error: "Este ingreso ya fue registrado como cobrado." };
+    }
+
+    const { data: cuenta, error: cuErr } = await supabase
+      .from("cuentas")
+      .select("id, moneda")
+      .eq("id", cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+
+    if (cuErr || !cuenta) {
+      return { error: "Cuenta inválida." };
+    }
+    if (cuenta.moneda !== row.moneda) {
+      return {
+        error: "La cuenta debe ser en la misma moneda que el ingreso pendiente.",
+      };
+    }
+
+    const fecha =
+      fechaRaw && /^\d{4}-\d{2}-\d{2}$/.test(fechaRaw)
+        ? fechaRaw
+        : new Date().toISOString().split("T")[0];
+
+    const descripcionFinal =
+      descripcionForm ||
+      (typeof row.descripcion === "string" && row.descripcion.trim()) ||
+      null;
+
+    const { data: txRow, error: insErr } = await supabase
+      .from("transacciones")
+      .insert({
+        usuario_id: user.id,
+        cuenta_id,
+        tipo: "ingreso" as const,
+        moneda: row.moneda as "ARS" | "USD",
+        monto,
+        descripcion: descripcionFinal,
+        fecha,
+        categoria_id: categoria_id || null,
+        ingreso_futuro_id: ingresoId,
+      })
+      .select("id")
+      .single();
+
+    if (insErr || !txRow) {
+      console.error("Supabase cobrarIngresoFuturo insert:", insErr);
+      return { error: "No se pudo registrar el ingreso en la cuenta." };
+    }
+
+    const { error: upErr } = await supabase
+      .from("ingresos_futuros")
+      .update({
+        cobrado_at: new Date().toISOString(),
+        transaccion_id: txRow.id,
+      })
+      .eq("id", ingresoId)
+      .eq("usuario_id", user.id)
+      .is("cobrado_at", null);
+
+    if (upErr) {
+      console.error("cobrarIngresoFuturo update ingreso:", upErr);
+      return {
+        error:
+          "Se creó la transacción pero no se pudo marcar el pendiente como cobrado. Revisá con soporte o borrá la transacción duplicada si aplica.",
+      };
+    }
+
+    revalidatePath("/por-cobrar");
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function eliminarIngresoFuturo(
+  ingresoFuturoId: string
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const { data, error } = await supabase
+      .from("ingresos_futuros")
+      .delete()
+      .eq("id", ingresoFuturoId)
+      .eq("usuario_id", user.id)
+      .is("cobrado_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase eliminarIngresoFuturo:", error);
+      return { error: "No se pudo eliminar el registro." };
+    }
+    if (!data) {
+      return {
+        error:
+          "No existe, no te pertenece o ya fue cobrado (no se puede borrar).",
+      };
+    }
+
+    revalidatePath("/por-cobrar");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}

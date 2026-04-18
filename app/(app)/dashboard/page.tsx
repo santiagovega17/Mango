@@ -16,6 +16,7 @@ import {
   PlusCircle,
   PieChart,
   Scale,
+  Banknote,
 } from "lucide-react";
 import Link from "next/link";
 import { NuevaCuentaDialog } from "@/components/nueva-cuenta-dialog";
@@ -44,6 +45,9 @@ export default async function DashboardPage() {
     cuentas,
     transaccionesRecientes,
     mesActual,
+    porCobrarARS,
+    porCobrarUSD,
+    totalPorCobrarEnARS,
   } = data;
 
   const tieneCuentas = cuentas.length > 0;
@@ -132,7 +136,7 @@ export default async function DashboardPage() {
 
       {/* ── 5 tarjetas de resumen (misma fila en xl) ───────────────────────── */}
       {tieneCuentas && (
-        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
           {/* Liquidez */}
           <Card className="min-w-0 border-sky-500/25 bg-gradient-to-br from-sky-500/[0.07] to-transparent p-4 shadow-sm shadow-sky-900/10">
             <CardHeader className="p-0 pb-2 space-y-0">
@@ -166,6 +170,72 @@ export default async function DashboardPage() {
                   {formatCurrency(saldoDisponibleUSD, "USD")}
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Por cobrar */}
+          <Card className="min-w-0 border-amber-500/25 bg-gradient-to-br from-amber-500/[0.08] to-transparent p-4 shadow-sm shadow-amber-950/10">
+            <CardHeader className="p-0 pb-2 space-y-0">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <CardDescription className="text-[10px] font-semibold uppercase tracking-wider text-amber-300/90 leading-tight">
+                    Ingresos pendientes
+                  </CardDescription>
+                  <CardTitle className="text-sm font-semibold text-foreground mt-0.5 truncate">
+                    Por cobrar
+                  </CardTitle>
+                </div>
+                <div className="rounded-lg bg-amber-500/15 p-1.5 shrink-0">
+                  <Banknote className="h-4 w-4 text-amber-400" />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0 space-y-2">
+              {totalPorCobrarEnARS != null ? (
+                <p className="text-lg font-bold tabular-nums tracking-tight text-foreground break-all">
+                  {formatCurrency(totalPorCobrarEnARS, "ARS")}
+                </p>
+              ) : (
+                <div className="space-y-0.5 min-w-0">
+                  <p className="text-base font-bold tabular-nums break-all">
+                    {formatCurrency(porCobrarARS, "ARS")}
+                  </p>
+                  {porCobrarUSD > 0 && (
+                    <p className="text-sm font-bold tabular-nums text-amber-300/95 break-all">
+                      + {formatCurrency(porCobrarUSD, "USD")}
+                    </p>
+                  )}
+                </div>
+              )}
+              {totalPorCobrarEnARS != null && porCobrarUSD > 0 && (
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  Incluye USD a tipo blue venta
+                  {cotizacionBlueVenta != null && (
+                    <span className="text-amber-300/80 font-medium">
+                      {" "}
+                      (${cotizacionBlueVenta.toLocaleString("es-AR")})
+                    </span>
+                  )}
+                </p>
+              )}
+              {porCobrarARS === 0 && porCobrarUSD === 0 ? (
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  Nada anotado.{" "}
+                  <Link
+                    href="/por-cobrar"
+                    className="text-amber-400/95 hover:underline underline-offset-2"
+                  >
+                    Agregar
+                  </Link>
+                </p>
+              ) : (
+                <Link
+                  href="/por-cobrar"
+                  className="inline-block text-[10px] font-medium text-amber-400/95 hover:underline underline-offset-2"
+                >
+                  Gestionar por cobrar →
+                </Link>
+              )}
             </CardContent>
           </Card>
 

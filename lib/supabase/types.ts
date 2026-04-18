@@ -83,6 +83,7 @@ export interface Database {
           cuenta_id: string;
           categoria_id: string | null;
           gasto_cuota_id: string | null;
+          ingreso_futuro_id: string | null;
           monto: number;
           tipo: TransaccionTipo;
           moneda: MonedaTipo;
@@ -96,6 +97,7 @@ export interface Database {
           cuenta_id: string;
           categoria_id?: string | null;
           gasto_cuota_id?: string | null;
+          ingreso_futuro_id?: string | null;
           monto: number;
           tipo: TransaccionTipo;
           moneda: MonedaTipo;
@@ -107,11 +109,47 @@ export interface Database {
           cuenta_id?: string;
           categoria_id?: string | null;
           gasto_cuota_id?: string | null;
+          ingreso_futuro_id?: string | null;
           monto?: number;
           tipo?: TransaccionTipo;
           moneda?: MonedaTipo;
           descripcion?: string | null;
           fecha?: string;
+        };
+      };
+      ingresos_futuros: {
+        Row: {
+          id: string;
+          usuario_id: string;
+          cuenta_id: string;
+          monto: number;
+          moneda: MonedaTipo;
+          descripcion: string | null;
+          fecha_esperada: string | null;
+          cobrado_at: string | null;
+          transaccion_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id: string;
+          cuenta_id: string;
+          monto: number;
+          moneda: MonedaTipo;
+          descripcion?: string | null;
+          fecha_esperada?: string | null;
+          cobrado_at?: string | null;
+          transaccion_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          cuenta_id?: string;
+          monto?: number;
+          moneda?: MonedaTipo;
+          descripcion?: string | null;
+          fecha_esperada?: string | null;
+          cobrado_at?: string | null;
+          transaccion_id?: string | null;
         };
       };
       gastos_cuotas: {
