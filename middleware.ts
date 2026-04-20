@@ -7,6 +7,7 @@ const PROTECTED_PREFIXES = [
   "/transacciones",
   "/inversiones",
   "/cuotas",
+  "/gastos-fijos",
   "/por-cobrar",
   "/configuracion",
   "/onboarding",

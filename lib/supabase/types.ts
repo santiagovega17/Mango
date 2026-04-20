@@ -83,6 +83,8 @@ export interface Database {
           cuenta_id: string;
           categoria_id: string | null;
           gasto_cuota_id: string | null;
+          gasto_fijo_id: string | null;
+          gasto_fijo_periodo: string | null;
           ingreso_futuro_id: string | null;
           monto: number;
           tipo: TransaccionTipo;
@@ -97,6 +99,8 @@ export interface Database {
           cuenta_id: string;
           categoria_id?: string | null;
           gasto_cuota_id?: string | null;
+          gasto_fijo_id?: string | null;
+          gasto_fijo_periodo?: string | null;
           ingreso_futuro_id?: string | null;
           monto: number;
           tipo: TransaccionTipo;
@@ -109,6 +113,8 @@ export interface Database {
           cuenta_id?: string;
           categoria_id?: string | null;
           gasto_cuota_id?: string | null;
+          gasto_fijo_id?: string | null;
+          gasto_fijo_periodo?: string | null;
           ingreso_futuro_id?: string | null;
           monto?: number;
           tipo?: TransaccionTipo;
@@ -150,6 +156,47 @@ export interface Database {
           fecha_esperada?: string | null;
           cobrado_at?: string | null;
           transaccion_id?: string | null;
+        };
+      };
+      gastos_fijos: {
+        Row: {
+          id: string;
+          usuario_id: string;
+          cuenta_id: string;
+          categoria_id: string | null;
+          descripcion: string;
+          monto: number;
+          moneda: MonedaTipo;
+          dia_mes: number;
+          fecha_inicio: string;
+          activo: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id: string;
+          cuenta_id: string;
+          categoria_id?: string | null;
+          descripcion: string;
+          monto: number;
+          moneda: MonedaTipo;
+          dia_mes: number;
+          fecha_inicio: string;
+          activo?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          cuenta_id?: string;
+          categoria_id?: string | null;
+          descripcion?: string;
+          monto?: number;
+          moneda?: MonedaTipo;
+          dia_mes?: number;
+          fecha_inicio?: string;
+          activo?: boolean;
+          updated_at?: string;
         };
       };
       gastos_cuotas: {

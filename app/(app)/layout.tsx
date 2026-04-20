@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Navbar } from "@/components/navbar";
+import { sincronizarGastosFijosPendientes } from "@/lib/data";
 
 export default async function AppLayout({
   children,
@@ -16,6 +17,9 @@ export default async function AppLayout({
   if (!user) {
     redirect("/login");
   }
+
+  // Auto-registra egresos de gastos fijos vencidos (idempotente por período).
+  await sincronizarGastosFijosPendientes(user.id);
 
   // Obtenemos el perfil del usuario para mostrar nombre en el Navbar
   const { data: profile } = await supabase

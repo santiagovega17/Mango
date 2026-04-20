@@ -93,6 +93,32 @@ function getRangoMesActual(): { desde: string; hasta: string } {
   return { desde, hasta };
 }
 
+function isoDate(d: Date): string {
+  return d.toISOString().split("T")[0];
+}
+
+function parseIsoAsUtc(iso: string): Date {
+  return new Date(`${iso}T00:00:00.000Z`);
+}
+
+function monthStart(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+
+function addMonthsUtc(base: Date, months: number): Date {
+  return new Date(
+    Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + months, 1)
+  );
+}
+
+function dueDateForPeriod(periodStart: Date, diaMes: number): Date {
+  const y = periodStart.getUTCFullYear();
+  const m = periodStart.getUTCMonth();
+  const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  const day = Math.max(1, Math.min(diaMes, last));
+  return new Date(Date.UTC(y, m, day));
+}
+
 /** Fila mínima de transacción para calcular saldo por cuenta. */
 type TxSaldoLista = {
   monto: number | string;
@@ -994,6 +1020,155 @@ export async function getGastosCuotas(
       proxima_fecha,
       monto_restante,
       completado,
+    };
+  });
+}
+
+// ── Gastos fijos mensuales ───────────────────────────────────────────────────
+
+export interface GastoFijoListItem {
+  id: string;
+  descripcion: string;
+  monto: number;
+  moneda: MonedaTipo;
+  dia_mes: number;
+  fecha_inicio: string;
+  activo: boolean;
+  cuenta_id: string;
+  cuenta_nombre: string;
+  categoria_id: string | null;
+  categoria_nombre: string | null;
+  proxima_fecha: string | null;
+}
+
+export async function sincronizarGastosFijosPendientes(
+  userId: string
+): Promise<number> {
+  const supabase = await createClient();
+  const hoy = monthStart(new Date());
+
+  const { data: rows, error } = await supabase
+    .from("gastos_fijos")
+    .select(
+      "id, usuario_id, cuenta_id, categoria_id, descripcion, monto, moneda, dia_mes, fecha_inicio, activo, cuentas(moneda)"
+    )
+    .eq("usuario_id", userId)
+    .eq("activo", true);
+
+  if (error || !rows || rows.length === 0) return 0;
+
+  const aInsertar: {
+    usuario_id: string;
+    cuenta_id: string;
+    categoria_id: string | null;
+    tipo: "egreso";
+    moneda: MonedaTipo;
+    monto: number;
+    descripcion: string;
+    fecha: string;
+    gasto_fijo_id: string;
+    gasto_fijo_periodo: string;
+  }[] = [];
+
+  for (const r of rows as any[]) {
+    const monto = Number(r.monto);
+    const dia = Number(r.dia_mes);
+    if (!Number.isFinite(monto) || monto <= 0) continue;
+    if (!Number.isFinite(dia) || dia < 1 || dia > 31) continue;
+    const cuentaMoneda = r.cuentas?.moneda as MonedaTipo | undefined;
+    const moneda = (r.moneda === "USD" ? "USD" : "ARS") as MonedaTipo;
+    if (!cuentaMoneda || cuentaMoneda !== moneda) continue;
+
+    const inicio = monthStart(parseIsoAsUtc(r.fecha_inicio));
+    let cursor = inicio;
+    let guard = 0;
+    while (cursor.getTime() <= hoy.getTime() && guard < 240) {
+      guard += 1;
+      const due = dueDateForPeriod(cursor, dia);
+      if (due.getTime() <= Date.now()) {
+        const periodoIso = isoDate(cursor);
+        const fechaIso = isoDate(due);
+        aInsertar.push({
+          usuario_id: userId,
+          cuenta_id: r.cuenta_id,
+          categoria_id: r.categoria_id ?? null,
+          tipo: "egreso",
+          moneda,
+          monto,
+          descripcion: `${r.descripcion} — Gasto fijo ${periodoIso.slice(0, 7)}`,
+          fecha: fechaIso,
+          gasto_fijo_id: r.id,
+          gasto_fijo_periodo: periodoIso,
+        });
+      }
+      cursor = addMonthsUtc(cursor, 1);
+    }
+  }
+
+  if (aInsertar.length === 0) return 0;
+
+  const { error: upsertErr } = await supabase.from("transacciones").upsert(
+    aInsertar,
+    {
+      onConflict: "gasto_fijo_id,gasto_fijo_periodo",
+      ignoreDuplicates: true,
+    }
+  );
+
+  if (upsertErr) {
+    console.error("sincronizarGastosFijosPendientes:", upsertErr);
+    return 0;
+  }
+
+  return aInsertar.length;
+}
+
+export async function getGastosFijos(
+  userId: string
+): Promise<GastoFijoListItem[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("gastos_fijos")
+    .select(
+      "id, descripcion, monto, moneda, dia_mes, fecha_inicio, activo, cuenta_id, categoria_id, cuentas(nombre), categorias(nombre)"
+    )
+    .eq("usuario_id", userId)
+    .order("activo", { ascending: false })
+    .order("dia_mes", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error || !data) return [];
+
+  const hoy = new Date();
+  const hoyUtc = new Date(
+    Date.UTC(hoy.getUTCFullYear(), hoy.getUTCMonth(), hoy.getUTCDate())
+  );
+
+  return (data as any[]).map((row) => {
+    const base = monthStart(parseIsoAsUtc(row.fecha_inicio));
+    let periodo = monthStart(hoyUtc);
+    const dueActual = dueDateForPeriod(periodo, Number(row.dia_mes));
+    if (dueActual.getTime() < hoyUtc.getTime()) {
+      periodo = addMonthsUtc(periodo, 1);
+    }
+    if (periodo.getTime() < base.getTime()) {
+      periodo = base;
+    }
+    const proxima_fecha = row.activo ? isoDate(dueDateForPeriod(periodo, Number(row.dia_mes))) : null;
+
+    return {
+      id: row.id,
+      descripcion: row.descripcion,
+      monto: Number(row.monto),
+      moneda: row.moneda as MonedaTipo,
+      dia_mes: Number(row.dia_mes),
+      fecha_inicio: row.fecha_inicio,
+      activo: !!row.activo,
+      cuenta_id: row.cuenta_id,
+      cuenta_nombre: row.cuentas?.nombre ?? "—",
+      categoria_id: row.categoria_id ?? null,
+      categoria_nombre: row.categorias?.nombre ?? null,
+      proxima_fecha,
     };
   });
 }

@@ -1159,3 +1159,158 @@ export async function eliminarIngresoFuturo(
     return { error: e instanceof Error ? e.message : "Error inesperado." };
   }
 }
+
+// ── GASTOS FIJOS MENSUALES ───────────────────────────────────────────────────
+
+export async function crearGastoFijo(formData: FormData): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta");
+    const descripcion = required(formData.get("descripcion"), "Descripción");
+    const montoRaw = required(formData.get("monto"), "Monto");
+    const diaRaw = required(formData.get("dia_mes"), "Día del mes");
+    const fecha_inicio = required(formData.get("fecha_inicio"), "Fecha de inicio");
+    const categoria_id = (formData.get("categoria_id") as string)?.trim() || null;
+    const moneda = required(formData.get("moneda"), "Moneda") as "ARS" | "USD";
+
+    const monto = parseFormDecimal(montoRaw);
+    if (!Number.isFinite(monto) || monto <= 0)
+      return { error: "El monto debe ser mayor a 0." };
+
+    const dia_mes = parseInt(diaRaw, 10);
+    if (!Number.isFinite(dia_mes) || dia_mes < 1 || dia_mes > 31)
+      return { error: "El día del mes debe estar entre 1 y 31." };
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_inicio))
+      return { error: "La fecha de inicio no es válida." };
+
+    const { data: cuenta, error: cuentaErr } = await supabase
+      .from("cuentas")
+      .select("id, moneda")
+      .eq("id", cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+    if (cuentaErr || !cuenta)
+      return { error: "La cuenta no existe o no te pertenece." };
+    if (cuenta.moneda !== moneda)
+      return { error: "La moneda del gasto fijo debe coincidir con la de la cuenta." };
+
+    const { error } = await supabase.from("gastos_fijos").insert({
+      usuario_id: user.id,
+      cuenta_id,
+      categoria_id: categoria_id || null,
+      descripcion,
+      monto,
+      moneda,
+      dia_mes,
+      fecha_inicio,
+      activo: true,
+    });
+
+    if (error) {
+      console.error("Supabase crearGastoFijo:", error);
+      return { error: "No se pudo crear el gasto fijo." };
+    }
+
+    revalidatePath("/gastos-fijos");
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function editarGastoFijo(formData: FormData): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+    const gasto_fijo_id = required(formData.get("gasto_fijo_id"), "Gasto fijo");
+    const cuenta_id = required(formData.get("cuenta_id"), "Cuenta");
+    const descripcion = required(formData.get("descripcion"), "Descripción");
+    const montoRaw = required(formData.get("monto"), "Monto");
+    const diaRaw = required(formData.get("dia_mes"), "Día del mes");
+    const fecha_inicio = required(formData.get("fecha_inicio"), "Fecha de inicio");
+    const categoria_id = (formData.get("categoria_id") as string)?.trim() || null;
+    const activoRaw = (formData.get("activo") as string)?.trim() || "1";
+    const moneda = required(formData.get("moneda"), "Moneda") as "ARS" | "USD";
+
+    const monto = parseFormDecimal(montoRaw);
+    if (!Number.isFinite(monto) || monto <= 0)
+      return { error: "El monto debe ser mayor a 0." };
+
+    const dia_mes = parseInt(diaRaw, 10);
+    if (!Number.isFinite(dia_mes) || dia_mes < 1 || dia_mes > 31)
+      return { error: "El día del mes debe estar entre 1 y 31." };
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha_inicio))
+      return { error: "La fecha de inicio no es válida." };
+
+    const { data: cuenta, error: cuentaErr } = await supabase
+      .from("cuentas")
+      .select("id, moneda")
+      .eq("id", cuenta_id)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+    if (cuentaErr || !cuenta)
+      return { error: "La cuenta no existe o no te pertenece." };
+    if (cuenta.moneda !== moneda)
+      return { error: "La moneda del gasto fijo debe coincidir con la de la cuenta." };
+
+    const { data: updated, error } = await supabase
+      .from("gastos_fijos")
+      .update({
+        cuenta_id,
+        categoria_id: categoria_id || null,
+        descripcion,
+        monto,
+        moneda,
+        dia_mes,
+        fecha_inicio,
+        activo: activoRaw !== "0",
+      })
+      .eq("id", gasto_fijo_id)
+      .eq("usuario_id", user.id)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase editarGastoFijo:", error);
+      return { error: "No se pudo editar el gasto fijo." };
+    }
+    if (!updated) return { error: "El gasto fijo no existe o no te pertenece." };
+
+    revalidatePath("/gastos-fijos");
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function eliminarGastoFijo(gastoFijoId: string): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+    const { data, error } = await supabase
+      .from("gastos_fijos")
+      .delete()
+      .eq("id", gastoFijoId)
+      .eq("usuario_id", user.id)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      console.error("Supabase eliminarGastoFijo:", error);
+      return { error: "No se pudo eliminar el gasto fijo." };
+    }
+    if (!data) return { error: "El gasto fijo no existe o no te pertenece." };
+
+    revalidatePath("/gastos-fijos");
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
