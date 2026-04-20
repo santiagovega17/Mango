@@ -249,6 +249,11 @@ export interface Database {
           cantidad: number;
           precio_compra: number;
           precio_actual: number | null;
+          tasa_anual: number | null;
+          fecha_vencimiento: string | null;
+          vendida_at: string | null;
+          fecha_venta: string | null;
+          precio_venta: number | null;
           moneda: MonedaTipo;
           tipo_activo: string;
           created_at: string;
@@ -261,6 +266,11 @@ export interface Database {
           cantidad: number;
           precio_compra: number;
           precio_actual?: number | null;
+          tasa_anual?: number | null;
+          fecha_vencimiento?: string | null;
+          vendida_at?: string | null;
+          fecha_venta?: string | null;
+          precio_venta?: number | null;
           moneda: MonedaTipo;
           tipo_activo: string;
           created_at?: string;
@@ -271,8 +281,41 @@ export interface Database {
           cantidad?: number;
           precio_compra?: number;
           precio_actual?: number | null;
+          tasa_anual?: number | null;
+          fecha_vencimiento?: string | null;
+          vendida_at?: string | null;
+          fecha_venta?: string | null;
+          precio_venta?: number | null;
           moneda?: MonedaTipo;
           tipo_activo?: string;
+        };
+      };
+      inversiones_movimientos: {
+        Row: {
+          id: string;
+          usuario_id: string;
+          inversion_id: string;
+          fecha: string;
+          cantidad: number;
+          precio_unitario: number;
+          monto_total: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          usuario_id: string;
+          inversion_id: string;
+          fecha?: string;
+          cantidad: number;
+          precio_unitario: number;
+          monto_total: number;
+          created_at?: string;
+        };
+        Update: {
+          fecha?: string;
+          cantidad?: number;
+          precio_unitario?: number;
+          monto_total?: number;
         };
       };
     };

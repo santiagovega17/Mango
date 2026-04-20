@@ -72,17 +72,6 @@ export default async function ResumenPage({
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Resumen anual {year}
           </h1>
-          <p className="text-sm text-muted-foreground max-w-xl print:text-xs">
-            Totales por moneda y desglose por categoría (ingresos y egresos).
-            Las transferencias entre cuentas no suman a categorías: solo se
-            cuentan como movimientos.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Para guardar como PDF: usá{" "}
-            <strong className="text-foreground/80">Imprimir</strong> y elegí{" "}
-            <strong className="text-foreground/80">Guardar como PDF</strong> en
-            el diálogo del sistema.
-          </p>
         </div>
         <ResumenPrintButton />
       </div>
@@ -108,10 +97,6 @@ export default async function ResumenPage({
         <Card className="border-dashed">
           <CardHeader>
             <CardTitle className="text-base">Sin datos en {year}</CardTitle>
-            <CardDescription className="text-xs">
-              No hay ingresos ni egresos registrados en este año. Cargá
-              transacciones o elegí otro año arriba.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <Link

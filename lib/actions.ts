@@ -196,6 +196,8 @@ export async function crearInversion(
   try {
     const { supabase, user } = await getAuthUser();
 
+    const inversionExistenteId =
+      (formData.get("inversion_id") as string)?.trim() || null;
     const nombre_activo = required(formData.get("nombre_activo"), "Nombre del activo");
     const tipo_activo = required(formData.get("tipo_activo"), "Tipo de activo");
     const cuenta_id = required(formData.get("cuenta_id"), "Cuenta broker");
@@ -203,8 +205,11 @@ export async function crearInversion(
     const cantidadRaw = required(formData.get("cantidad"), "Cantidad");
     const precioCompraRaw = required(formData.get("precio_compra"), "Precio de compra");
     const precioActualRaw = (formData.get("precio_actual") as string)?.trim() || "";
+    const fechaOperacionRaw = (formData.get("fecha_operacion") as string)?.trim();
+    const tasaRaw = (formData.get("tasa_anual") as string)?.trim() || "";
+    const fechaVencRaw = (formData.get("fecha_vencimiento") as string)?.trim() || "";
 
-    const cantidad = parseFormDecimal(cantidadRaw);
+    const cantidad = tipo_activo === "Plazo Fijo" ? 1 : parseFormDecimal(cantidadRaw);
     if (isNaN(cantidad) || cantidad <= 0)
       return { error: "La cantidad debe ser un número mayor a 0." };
 
@@ -216,6 +221,31 @@ export async function crearInversion(
       precioActualRaw !== "" ? parseFormDecimal(precioActualRaw) : null;
     if (precio_actual !== null && (isNaN(precio_actual) || precio_actual < 0))
       return { error: "El precio actual debe ser un número positivo." };
+
+    const fecha_operacion =
+      fechaOperacionRaw && /^\d{4}-\d{2}-\d{2}$/.test(fechaOperacionRaw)
+        ? fechaOperacionRaw
+        : new Date().toISOString().split("T")[0];
+
+    const esPlazoFijo = tipo_activo === "Plazo Fijo";
+    const tasa_anual = tasaRaw !== "" ? parseFormDecimal(tasaRaw) : null;
+    if (esPlazoFijo && (tasa_anual == null || isNaN(tasa_anual) || tasa_anual < 0)) {
+      return { error: "Para plazo fijo ingresá una tasa anual válida." };
+    }
+    if (!esPlazoFijo && tasaRaw !== "") {
+      return { error: "La tasa anual solo aplica a activos de tipo Plazo Fijo." };
+    }
+    const fecha_vencimiento =
+      fechaVencRaw && /^\d{4}-\d{2}-\d{2}$/.test(fechaVencRaw) ? fechaVencRaw : null;
+    if (esPlazoFijo && !fecha_vencimiento) {
+      return { error: "Para plazo fijo ingresá la fecha de vencimiento." };
+    }
+    if (!esPlazoFijo && fechaVencRaw !== "") {
+      return {
+        error:
+          "La fecha de vencimiento solo aplica a activos de tipo Plazo Fijo.",
+      };
+    }
 
     if (!["ARS", "USD"].includes(moneda))
       return { error: "La moneda debe ser ARS o USD." };
@@ -242,16 +272,110 @@ export async function crearInversion(
       };
     }
 
-    const { error: insertError } = await supabase.from("inversiones").insert({
-      usuario_id: user.id,
-      cuenta_id,
-      nombre_activo,
-      tipo_activo,
-      moneda,
-      cantidad,
-      precio_compra,
-      precio_actual, // null si no se proporcionó — columna ya existe en la DB
-    });
+    let inversionId: string | null = null;
+    let insertError: {
+      code?: string;
+      message?: string;
+      details?: string;
+      hint?: string;
+    } | null = null;
+
+    if (inversionExistenteId) {
+      const { data: existente, error: exErr } = await supabase
+        .from("inversiones")
+        .select(
+          "id, nombre_activo, tipo_activo, cuenta_id, moneda, cantidad, precio_compra, precio_actual, vendida_at"
+        )
+        .eq("id", inversionExistenteId)
+        .eq("usuario_id", user.id)
+        .maybeSingle();
+
+      if (exErr || !existente)
+        return { error: "La inversión seleccionada no existe o no te pertenece." };
+      if (existente.vendida_at) {
+        return { error: "No podés agregar compra a un activo vendido." };
+      }
+      if (tipo_activo === "Plazo Fijo") {
+        return {
+          error:
+            "Para plazo fijo registrá una nueva inversión en lugar de sumar a una existente.",
+        };
+      }
+      if (existente.cuenta_id !== cuenta_id || existente.moneda !== moneda)
+        return {
+          error:
+            "La inversión seleccionada debe pertenecer a la misma cuenta broker y moneda.",
+        };
+
+      const cantidadActual = Number(existente.cantidad);
+      const precioCompraActual = Number(existente.precio_compra);
+      const totalAnterior = cantidadActual * precioCompraActual;
+      const totalNuevo = cantidad * precio_compra;
+      const cantidadFinal = cantidadActual + cantidad;
+      const precioPromedio =
+        cantidadFinal > 0 ? (totalAnterior + totalNuevo) / cantidadFinal : precio_compra;
+
+      const payload: {
+        cantidad: number;
+        precio_compra: number;
+        precio_actual?: number | null;
+        tasa_anual?: number | null;
+        fecha_vencimiento?: string | null;
+      } = {
+        cantidad: cantidadFinal,
+        precio_compra: precioPromedio,
+      };
+      if (precio_actual !== null) payload.precio_actual = precio_actual;
+      if (esPlazoFijo) {
+        payload.tasa_anual = tasa_anual;
+        payload.fecha_vencimiento = fecha_vencimiento;
+      }
+
+      const { data: updated, error: updErr } = await supabase
+        .from("inversiones")
+        .update(payload)
+        .eq("id", inversionExistenteId)
+        .eq("usuario_id", user.id)
+        .select("id")
+        .maybeSingle();
+
+      if (updErr || !updated) {
+        insertError = updErr ?? {
+          code: "UPDATE_FAILED",
+          message: "No se pudo actualizar la inversión existente.",
+        };
+      } else {
+        inversionId = updated.id;
+      }
+    } else {
+      const { data: inserted, error } = await supabase
+        .from("inversiones")
+        .insert({
+          usuario_id: user.id,
+          cuenta_id,
+          nombre_activo,
+          tipo_activo,
+          moneda,
+          cantidad,
+          precio_compra,
+          precio_actual: esPlazoFijo ? null : precio_actual,
+          tasa_anual: esPlazoFijo ? tasa_anual : null,
+          fecha_vencimiento: esPlazoFijo ? fecha_vencimiento : null,
+          vendida_at: null,
+          fecha_venta: null,
+          precio_venta: null,
+        })
+        .select("id")
+        .maybeSingle();
+      if (error || !inserted) {
+        insertError = error ?? {
+          code: "INSERT_FAILED",
+          message: "No se pudo crear la inversión.",
+        };
+      } else {
+        inversionId = inserted.id;
+      }
+    }
 
     if (insertError) {
       const detalle = [insertError.code, insertError.message, insertError.details]
@@ -265,6 +389,27 @@ export async function crearInversion(
         payload: { usuario_id: user.id, nombre_activo, tipo_activo },
       });
       return { error: `Error al guardar: ${detalle}` };
+    }
+
+    if (!inversionId) return { error: "No se pudo guardar la inversión." };
+
+    const monto_total = Math.round(cantidad * precio_compra * 100) / 100;
+    const { error: movErr } = await supabase
+      .from("inversiones_movimientos")
+      .insert({
+        usuario_id: user.id,
+        inversion_id: inversionId,
+        fecha: fecha_operacion,
+        cantidad,
+        precio_unitario: precio_compra,
+        monto_total,
+      });
+    if (movErr) {
+      console.error("Supabase inversiones_movimientos:", movErr);
+      return {
+        error:
+          "La inversión se guardó, pero falló el historial de movimientos. Revisá la migración SQL.",
+      };
     }
 
     revalidatePath("/inversiones");
@@ -318,6 +463,15 @@ export async function actualizarPrecioActual(
     if (precio_actual !== null && (isNaN(precio_actual) || precio_actual < 0))
       return { error: "El precio debe ser un número positivo." };
 
+    const { data: inv, error: invErr } = await supabase
+      .from("inversiones")
+      .select("id, vendida_at")
+      .eq("id", inversionId)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+    if (invErr || !inv) return { error: "La inversión no existe." };
+    if (inv.vendida_at) return { error: "No se puede editar un activo vendido." };
+
     const { error } = await supabase
       .from("inversiones")
       .update({ precio_actual })
@@ -331,6 +485,89 @@ export async function actualizarPrecioActual(
 
     revalidatePath("/inversiones");
     revalidatePath("/dashboard");
+    return { success: true };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Error inesperado." };
+  }
+}
+
+export async function venderInversion(
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const { supabase, user } = await getAuthUser();
+    const inversionId = required(formData.get("inversion_id"), "Inversión");
+    const precioVentaRaw = required(formData.get("precio_venta"), "Precio de venta");
+    const fechaRaw = (formData.get("fecha_venta") as string)?.trim();
+
+    const precio_venta = parseFormDecimal(precioVentaRaw);
+    if (!Number.isFinite(precio_venta) || precio_venta <= 0) {
+      return { error: "Ingresá un precio de venta mayor a 0." };
+    }
+    const fecha_venta =
+      fechaRaw && /^\d{4}-\d{2}-\d{2}$/.test(fechaRaw)
+        ? fechaRaw
+        : new Date().toISOString().split("T")[0];
+
+    const { data: inv, error: invErr } = await supabase
+      .from("inversiones")
+      .select(
+        "id, nombre_activo, cantidad, moneda, cuenta_id, vendida_at"
+      )
+      .eq("id", inversionId)
+      .eq("usuario_id", user.id)
+      .maybeSingle();
+    if (invErr || !inv) return { error: "La inversión no existe o no te pertenece." };
+    if (inv.vendida_at) return { error: "Esta inversión ya fue vendida." };
+    if (!inv.cuenta_id) {
+      return { error: "La inversión no tiene cuenta broker asignada." };
+    }
+
+    const montoTotal = Number(inv.cantidad) * precio_venta;
+    if (!Number.isFinite(montoTotal) || montoTotal <= 0) {
+      return { error: "No se pudo calcular el monto de la venta." };
+    }
+
+    const descripcion = `Venta de ${inv.nombre_activo}`;
+    const { data: tx, error: txErr } = await supabase
+      .from("transacciones")
+      .insert({
+        usuario_id: user.id,
+        cuenta_id: inv.cuenta_id,
+        tipo: "ingreso",
+        moneda: inv.moneda as "ARS" | "USD",
+        monto: Math.round(montoTotal * 100) / 100,
+        descripcion,
+        fecha: fecha_venta,
+        categoria_id: null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (txErr || !tx) {
+      return { error: "No se pudo registrar el ingreso de la venta." };
+    }
+
+    const { error: upErr } = await supabase
+      .from("inversiones")
+      .update({
+        precio_venta,
+        fecha_venta,
+        vendida_at: new Date().toISOString(),
+      })
+      .eq("id", inversionId)
+      .eq("usuario_id", user.id)
+      .is("vendida_at", null);
+    if (upErr) {
+      console.error("Supabase venderInversion:", upErr);
+      return {
+        error:
+          "Se creó el ingreso, pero no se pudo cerrar la inversión. Revisá el estado manualmente.",
+      };
+    }
+
+    revalidatePath("/inversiones");
+    revalidatePath("/dashboard");
+    revalidatePath("/transacciones");
     return { success: true };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Error inesperado." };
@@ -862,6 +1099,36 @@ export async function obtenerCuentasAction(): Promise<CuentaResumen[]> {
 
     if (error) return [];
     return (data ?? []) as CuentaResumen[];
+  } catch {
+    return [];
+  }
+}
+
+export async function obtenerActivosInversionAction(): Promise<
+  {
+    id: string;
+    nombre_activo: string;
+    tipo_activo: string;
+    cuenta_id: string | null;
+    moneda: "ARS" | "USD";
+  }[]
+> {
+  try {
+    const { supabase, user } = await getAuthUser();
+    const { data, error } = await supabase
+      .from("inversiones")
+      .select("id, nombre_activo, tipo_activo, cuenta_id, moneda")
+      .eq("usuario_id", user.id)
+      .is("vendida_at", null)
+      .order("nombre_activo", { ascending: true });
+    if (error) return [];
+    return (data ?? []) as {
+      id: string;
+      nombre_activo: string;
+      tipo_activo: string;
+      cuenta_id: string | null;
+      moneda: "ARS" | "USD";
+    }[];
   } catch {
     return [];
   }

@@ -20,7 +20,6 @@ import {
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -152,18 +151,13 @@ export function GastosFijosPanel({ gastos, cuentas }: Props) {
       {cuentas.length === 0 && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Necesitás al menos una cuenta para crear gastos fijos.
-          </AlertDescription>
+          <AlertDescription>Sin cuentas disponibles.</AlertDescription>
         </Alert>
       )}
 
       {gastos.length === 0 ? (
         <Card>
-          <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            Todavía no hay gastos fijos. Creá uno y se descontará automáticamente
-            cada mes al llegar su fecha.
-          </CardContent>
+          <CardContent className="py-12 text-center text-sm text-muted-foreground">Sin gastos fijos.</CardContent>
         </Card>
       ) : (
         <div className="rounded-xl border border-border overflow-x-auto">
@@ -237,10 +231,6 @@ export function GastosFijosPanel({ gastos, cuentas }: Props) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nuevo gasto fijo mensual</DialogTitle>
-            <DialogDescription>
-              Se registra un egreso automáticamente cada mes cuando llega el día
-              configurado.
-            </DialogDescription>
           </DialogHeader>
           <form
             className="space-y-4"
@@ -359,9 +349,6 @@ export function GastosFijosPanel({ gastos, cuentas }: Props) {
             <>
               <DialogHeader>
                 <DialogTitle>Editar gasto fijo</DialogTitle>
-                <DialogDescription>
-                  Podés pausar el gasto fijo sin eliminarlo.
-                </DialogDescription>
               </DialogHeader>
               <form
                 className="space-y-4"
@@ -482,7 +469,7 @@ export function GastosFijosPanel({ gastos, cuentas }: Props) {
                     onChange={(e) => setActivoEdit(e.target.checked)}
                     className="rounded border-border"
                   />
-                  Activo (si está desmarcado, no se descuenta automáticamente)
+                  Activo
                 </label>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setEditItem(null)}>

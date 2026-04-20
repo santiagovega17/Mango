@@ -25,11 +25,6 @@ export default async function PorCobrarPage() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Por cobrar
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-            Anotá ingresos que todavía no entraron: con o sin fecha prevista.
-            Cuando cobres, registrá el ingreso real con un clic para que sume
-            en tu cuenta y en transacciones.
-          </p>
         </div>
         <Button variant="outline" size="sm" asChild className="shrink-0">
           <Link href="/dashboard">Volver al dashboard</Link>

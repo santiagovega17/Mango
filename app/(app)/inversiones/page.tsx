@@ -25,9 +25,6 @@ export default async function InversionesPage() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Mi Cartera
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Por cuenta broker: posiciones, saldo y estimado no invertido.
-          </p>
         </div>
         <NuevaInversionDialog />
       </div>
@@ -36,6 +33,7 @@ export default async function InversionesPage() {
       <InversionesCartera
         brokers={cartera.brokers}
         sinBroker={cartera.sinBroker}
+        cerradas={cartera.cerradas}
         dolarBlue={dolarBlue}
       />
     </div>

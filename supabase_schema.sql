@@ -223,6 +223,11 @@ CREATE TABLE IF NOT EXISTS public.inversiones (
   precio_compra  NUMERIC(15, 2) NOT NULL CHECK (precio_compra > 0),
   moneda         moneda_tipo    NOT NULL DEFAULT 'USD',
   tipo_activo    TEXT           NOT NULL,    -- ej: 'crypto', 'accion', 'bono', 'plazo_fijo'
+  tasa_anual     NUMERIC(7, 4),
+  fecha_vencimiento DATE,
+  vendida_at     TIMESTAMPTZ,
+  fecha_venta    DATE,
+  precio_venta   NUMERIC(15, 4),
   created_at     TIMESTAMPTZ    NOT NULL DEFAULT NOW()
 );
 
@@ -230,6 +235,7 @@ COMMENT ON TABLE public.inversiones IS
   'Portafolio de inversiones del usuario (cripto, acciones, bonos, plazos fijos, etc.).';
 
 CREATE INDEX IF NOT EXISTS idx_inversiones_usuario ON public.inversiones(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_inversiones_vendida_at ON public.inversiones(usuario_id, vendida_at);
 
 ALTER TABLE public.inversiones
   ADD COLUMN IF NOT EXISTS cuenta_id UUID REFERENCES public.cuentas(id) ON DELETE RESTRICT;
@@ -238,6 +244,31 @@ CREATE INDEX IF NOT EXISTS idx_inversiones_cuenta ON public.inversiones(cuenta_i
 
 COMMENT ON COLUMN public.inversiones.cuenta_id IS
   'Cuenta tipo inversión (broker) donde está la posición.';
+
+
+-- ---------------------------------------------------------------------------
+-- TABLA: inversiones_movimientos
+-- Historial de compras / altas para calcular promedio y detalle por activo.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.inversiones_movimientos (
+  id              UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+  usuario_id      UUID           NOT NULL REFERENCES public.usuarios(id) ON DELETE CASCADE,
+  inversion_id    UUID           NOT NULL REFERENCES public.inversiones(id) ON DELETE CASCADE,
+  fecha           DATE           NOT NULL DEFAULT CURRENT_DATE,
+  cantidad        NUMERIC(20, 8) NOT NULL CHECK (cantidad > 0),
+  precio_unitario NUMERIC(15, 4) NOT NULL CHECK (precio_unitario > 0),
+  monto_total     NUMERIC(15, 2) NOT NULL CHECK (monto_total > 0),
+  created_at      TIMESTAMPTZ    NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE public.inversiones_movimientos IS
+  'Historial de altas/compras por inversión para auditar promedio y costo acumulado.';
+
+CREATE INDEX IF NOT EXISTS idx_inversiones_movimientos_usuario
+  ON public.inversiones_movimientos(usuario_id);
+CREATE INDEX IF NOT EXISTS idx_inversiones_movimientos_inversion
+  ON public.inversiones_movimientos(inversion_id, fecha DESC, created_at DESC);
 
 
 -- =============================================================================
@@ -251,6 +282,7 @@ ALTER TABLE public.categorias   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.transacciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gastos_cuotas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inversiones  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inversiones_movimientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ingresos_futuros ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.gastos_fijos ENABLE ROW LEVEL SECURITY;
 
@@ -397,6 +429,28 @@ CREATE POLICY "inversiones_update_own"
 
 CREATE POLICY "inversiones_delete_own"
   ON public.inversiones FOR DELETE
+  USING (auth.uid() = usuario_id);
+
+
+-- ---------------------------------------------------------------------------
+-- POLÍTICAS: inversiones_movimientos
+-- ---------------------------------------------------------------------------
+
+CREATE POLICY "inversiones_movimientos_select_own"
+  ON public.inversiones_movimientos FOR SELECT
+  USING (auth.uid() = usuario_id);
+
+CREATE POLICY "inversiones_movimientos_insert_own"
+  ON public.inversiones_movimientos FOR INSERT
+  WITH CHECK (auth.uid() = usuario_id);
+
+CREATE POLICY "inversiones_movimientos_update_own"
+  ON public.inversiones_movimientos FOR UPDATE
+  USING (auth.uid() = usuario_id)
+  WITH CHECK (auth.uid() = usuario_id);
+
+CREATE POLICY "inversiones_movimientos_delete_own"
+  ON public.inversiones_movimientos FOR DELETE
   USING (auth.uid() = usuario_id);
 
 

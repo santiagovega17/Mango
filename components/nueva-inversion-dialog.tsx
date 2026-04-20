@@ -23,7 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { crearInversion, obtenerCuentasAction } from "@/lib/actions";
+import {
+  crearInversion,
+  obtenerActivosInversionAction,
+  obtenerCuentasAction,
+} from "@/lib/actions";
 import { parseFormDecimal } from "@/lib/form-numbers";
 import { esCuentaBrokerInversion } from "@/lib/cuenta-tipo";
 import type { CuentaResumen } from "@/lib/data";
@@ -52,12 +56,28 @@ export function NuevaInversionDialog({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [moneda, setMoneda] = useState<"ARS" | "USD">("USD");
+  const [nombreActivo, setNombreActivo] = useState("");
   const [tipoActivo, setTipoActivo] = useState("");
   const [cantidad, setCantidad] = useState("");
   const [montoCompraTotal, setMontoCompraTotal] = useState("");
   const [montoActualTotal, setMontoActualTotal] = useState("");
   const [cuentas, setCuentas] = useState<CuentaResumen[]>([]);
+  const [activos, setActivos] = useState<
+    {
+      id: string;
+      nombre_activo: string;
+      tipo_activo: string;
+      cuenta_id: string | null;
+      moneda: "ARS" | "USD";
+    }[]
+  >([]);
+  const [activoExistenteId, setActivoExistenteId] = useState("new");
   const [cuentaBrokerId, setCuentaBrokerId] = useState("");
+  const [fechaOperacion, setFechaOperacion] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [tasaAnual, setTasaAnual] = useState("");
+  const [fechaVencimiento, setFechaVencimiento] = useState("");
   const [loadingCuentas, setLoadingCuentas] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -72,8 +92,11 @@ export function NuevaInversionDialog({
   useEffect(() => {
     if (!open) return;
     setLoadingCuentas(true);
-    obtenerCuentasAction()
-      .then(setCuentas)
+    Promise.all([obtenerCuentasAction(), obtenerActivosInversionAction()])
+      .then(([cuentasRes, activosRes]) => {
+        setCuentas(cuentasRes);
+        setActivos(activosRes);
+      })
       .finally(() => setLoadingCuentas(false));
   }, [open]);
 
@@ -88,6 +111,49 @@ export function NuevaInversionDialog({
         : brokersEnMoneda[0].id
     );
   }, [brokersEnMoneda]);
+
+  const activosExistentes = useMemo(
+    () =>
+      activos.filter(
+        (a) => a.moneda === moneda && a.cuenta_id === cuentaBrokerId
+      ),
+    [activos, moneda, cuentaBrokerId]
+  );
+
+  useEffect(() => {
+    if (activoExistenteId === "new") return;
+    if (!activosExistentes.some((a) => a.id === activoExistenteId)) {
+      setActivoExistenteId("new");
+      setNombreActivo("");
+      setTipoActivo("");
+    }
+  }, [activosExistentes, activoExistenteId]);
+
+  useEffect(() => {
+    if (activoExistenteId === "new") return;
+    const activo = activos.find((a) => a.id === activoExistenteId);
+    if (!activo) return;
+    if (cuentaBrokerId && activo.cuenta_id !== cuentaBrokerId) return;
+    setNombreActivo(activo.nombre_activo);
+    setTipoActivo(activo.tipo_activo);
+    if (activo.tipo_activo === "Plazo Fijo") {
+      setCantidad("1");
+    }
+    if (activo.tipo_activo !== "Plazo Fijo") {
+      setTasaAnual("");
+      setFechaVencimiento("");
+    }
+  }, [activoExistenteId, activos, cuentaBrokerId]);
+
+  useEffect(() => {
+    if (tipoActivo !== "Plazo Fijo") {
+      setTasaAnual("");
+      setFechaVencimiento("");
+    } else {
+      setCantidad("1");
+      setMontoActualTotal("");
+    }
+  }, [tipoActivo]);
 
   // Precios unitarios calculados en tiempo real
   const { precioUnitarioCompra, precioUnitarioActual } = useMemo(() => {
@@ -117,8 +183,22 @@ export function NuevaInversionDialog({
 
     const formData = new FormData(e.currentTarget);
     formData.set("moneda", moneda);
+    formData.set("nombre_activo", nombreActivo);
     formData.set("tipo_activo", tipoActivo);
     formData.set("cuenta_id", cuentaBrokerId);
+    formData.set("fecha_operacion", fechaOperacion);
+    if (activoExistenteId !== "new") {
+      formData.set("inversion_id", activoExistenteId);
+    } else {
+      formData.delete("inversion_id");
+    }
+    if (tipoActivo === "Plazo Fijo") {
+      formData.set("tasa_anual", tasaAnual);
+      formData.set("fecha_vencimiento", fechaVencimiento);
+    } else {
+      formData.delete("tasa_anual");
+      formData.delete("fecha_vencimiento");
+    }
     // Persistir precios unitarios, no los totales
     formData.set("precio_compra", String(precioUnitarioCompra));
     if (precioUnitarioActual) {
@@ -136,11 +216,16 @@ export function NuevaInversionDialog({
         toast.success("Inversión guardada en la cartera.");
         formRef.current?.reset();
         setMoneda("USD");
+        setNombreActivo("");
         setTipoActivo("");
         setCantidad("");
         setMontoCompraTotal("");
         setMontoActualTotal("");
         setCuentaBrokerId("");
+        setActivoExistenteId("new");
+        setFechaOperacion(new Date().toISOString().slice(0, 10));
+        setTasaAnual("");
+        setFechaVencimiento("");
         setOpen(false);
       }
     });
@@ -150,11 +235,16 @@ export function NuevaInversionDialog({
     if (!v) {
       setError(null);
       setMoneda("USD");
+      setNombreActivo("");
       setTipoActivo("");
       setCantidad("");
       setMontoCompraTotal("");
       setMontoActualTotal("");
       setCuentaBrokerId("");
+      setActivoExistenteId("new");
+      setFechaOperacion(new Date().toISOString().slice(0, 10));
+      setTasaAnual("");
+      setFechaVencimiento("");
       formRef.current?.reset();
     }
     setOpen(v);
@@ -244,6 +334,34 @@ export function NuevaInversionDialog({
             )}
           </div>
 
+          {/* Recompra de activo existente */}
+          <div className="space-y-1.5">
+            <Label>Activo existente (opcional)</Label>
+            <Select
+              value={activoExistenteId}
+              onValueChange={setActivoExistenteId}
+              disabled={isPending || !cuentaBrokerId}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Crear activo nuevo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new">Crear activo nuevo</SelectItem>
+                {activosExistentes.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.nombre_activo} ({a.tipo_activo})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {activoExistenteId !== "new" && (
+              <p className="text-[11px] text-muted-foreground">
+                Se sumará esta compra al activo elegido y se recalculará el
+                precio promedio de compra.
+              </p>
+            )}
+          </div>
+
           {/* Nombre del activo */}
           <div className="space-y-1.5">
             <Label htmlFor="nombre_activo">Nombre del activo</Label>
@@ -252,7 +370,9 @@ export function NuevaInversionDialog({
               name="nombre_activo"
               placeholder="ej: Bitcoin, AAPL, Plazo Fijo Banco X"
               required
-              disabled={isPending}
+              disabled={isPending || activoExistenteId !== "new"}
+              value={nombreActivo}
+              onChange={(e) => setNombreActivo(e.target.value)}
             />
           </div>
 
@@ -263,7 +383,7 @@ export function NuevaInversionDialog({
               value={tipoActivo}
               onValueChange={setTipoActivo}
               required
-              disabled={isPending}
+              disabled={isPending || activoExistenteId !== "new"}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccioná un tipo…" />
@@ -278,26 +398,79 @@ export function NuevaInversionDialog({
             </Select>
           </div>
 
-          {/* Cantidad (divisor compartido) */}
           <div className="space-y-1.5">
-            <Label htmlFor="cantidad">Cantidad</Label>
+            <Label htmlFor="fecha_operacion">Fecha de operación</Label>
             <Input
-              id="cantidad"
-              name="cantidad"
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="any"
-              placeholder="1"
-              required
+              id="fecha_operacion"
+              name="fecha_operacion"
+              type="date"
+              value={fechaOperacion}
+              onChange={(e) => setFechaOperacion(e.target.value)}
               disabled={isPending}
-              value={cantidad}
-              onChange={(e) => setCantidad(e.target.value)}
+              required
             />
           </div>
 
+          {tipoActivo === "Plazo Fijo" && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="tasa_anual">Tasa anual (%)</Label>
+                <Input
+                  id="tasa_anual"
+                  name="tasa_anual"
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={tasaAnual}
+                  onChange={(e) => setTasaAnual(e.target.value)}
+                  disabled={isPending}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="fecha_vencimiento">Vencimiento</Label>
+                <Input
+                  id="fecha_vencimiento"
+                  name="fecha_vencimiento"
+                  type="date"
+                  value={fechaVencimiento}
+                  onChange={(e) => setFechaVencimiento(e.target.value)}
+                  disabled={isPending}
+                  required
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Cantidad (divisor compartido) */}
+          {tipoActivo !== "Plazo Fijo" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="cantidad">Cantidad</Label>
+              <Input
+                id="cantidad"
+                name="cantidad"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                placeholder="1"
+                required
+                disabled={isPending}
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+              />
+            </div>
+          ) : (
+            <input type="hidden" name="cantidad" value="1" />
+          )}
+
           {/* Monto total invertido + Valor total actual */}
-          <div className="grid grid-cols-2 gap-3">
+          <div
+            className={`grid gap-3 ${
+              tipoActivo === "Plazo Fijo" ? "grid-cols-1" : "grid-cols-2"
+            }`}
+          >
             <div className="space-y-1.5">
               <Label htmlFor="monto_compra_total">
                 Monto total invertido ({moneda})
@@ -323,30 +496,34 @@ export function NuevaInversionDialog({
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="monto_actual_total">
-                Valor total actual ({moneda}){" "}
-                <span className="text-muted-foreground font-normal text-xs">— opcional</span>
-              </Label>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground/60">
-                  {moneda === "ARS" ? "$" : "u$s"}
-                </span>
-                <Input
-                  id="monto_actual_total"
-                  name="monto_actual_total"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step={0.01}
-                  placeholder="Podés actualizarlo después"
-                  disabled={isPending}
-                  value={montoActualTotal}
-                  onChange={(e) => setMontoActualTotal(e.target.value)}
-                  className="pl-8"
-                />
+            {tipoActivo !== "Plazo Fijo" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="monto_actual_total">
+                  Valor total actual ({moneda}){" "}
+                  <span className="text-muted-foreground font-normal text-xs">— opcional</span>
+                </Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground/60">
+                    {moneda === "ARS" ? "$" : "u$s"}
+                  </span>
+                  <Input
+                    id="monto_actual_total"
+                    name="monto_actual_total"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step={0.01}
+                    placeholder="Podés actualizarlo después"
+                    disabled={isPending}
+                    value={montoActualTotal}
+                    onChange={(e) => setMontoActualTotal(e.target.value)}
+                    className="pl-8"
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <input type="hidden" name="monto_actual_total" value="" />
+            )}
           </div>
 
           {/* Panel de precios unitarios calculados */}
@@ -374,27 +551,29 @@ export function NuevaInversionDialog({
               </span>
             </div>
 
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Precio actual:</span>
-              <span
-                className={`font-mono text-sm font-semibold ${
-                  precioUnitarioActual
-                    ? precioUnitarioActual >= (precioUnitarioCompra ?? 0)
-                      ? "text-emerald-400"
-                      : "text-red-400"
-                    : "text-muted-foreground/40"
-                }`}
-              >
-                {precioUnitarioActual
-                  ? `${moneda === "ARS" ? "$" : "u$s"} ${precioUnitarioActual.toLocaleString("es-AR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 6,
-                    })}`
-                  : "—"}
-              </span>
-            </div>
+            {tipoActivo !== "Plazo Fijo" && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Precio actual:</span>
+                <span
+                  className={`font-mono text-sm font-semibold ${
+                    precioUnitarioActual
+                      ? precioUnitarioActual >= (precioUnitarioCompra ?? 0)
+                        ? "text-emerald-400"
+                        : "text-red-400"
+                      : "text-muted-foreground/40"
+                  }`}
+                >
+                  {precioUnitarioActual
+                    ? `${moneda === "ARS" ? "$" : "u$s"} ${precioUnitarioActual.toLocaleString("es-AR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 6,
+                      })}`
+                    : "—"}
+                </span>
+              </div>
+            )}
 
-            {precioUnitarioCompra && precioUnitarioActual && (
+            {tipoActivo !== "Plazo Fijo" && precioUnitarioCompra && precioUnitarioActual && (
               <div className="flex items-center justify-between border-t border-border/30 pt-1.5 mt-1">
                 <span className="text-xs text-muted-foreground">Rendimiento estimado:</span>
                 <span
@@ -430,8 +609,11 @@ export function NuevaInversionDialog({
               type="submit"
               disabled={
                 isPending ||
+                !nombreActivo.trim() ||
                 !tipoActivo ||
                 !cuentaBrokerId ||
+                (tipoActivo === "Plazo Fijo" &&
+                  (!tasaAnual.trim() || !fechaVencimiento.trim())) ||
                 brokersEnMoneda.length === 0
               }
               className="gap-2"

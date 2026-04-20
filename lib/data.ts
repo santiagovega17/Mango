@@ -720,9 +720,22 @@ export interface InversionItem {
   cantidad: number;
   precio_compra: number;
   precio_actual: number | null;
+  tasa_anual: number | null;
+  fecha_vencimiento: string | null;
+  vendida_at: string | null;
+  fecha_venta: string | null;
+  precio_venta: number | null;
+  estado: "activa" | "vencida" | "vendida";
   moneda: MonedaTipo;
   cuenta_id: string | null;
   cuenta_nombre: string | null;
+  movimientos: {
+    id: string;
+    fecha: string;
+    cantidad: number;
+    precio_unitario: number;
+    monto_total: number;
+  }[];
 }
 
 export async function getInversiones(
@@ -733,22 +746,55 @@ export async function getInversiones(
   const { data } = await supabase
     .from("inversiones")
     .select(
-      "id, nombre_activo, tipo_activo, cantidad, precio_compra, precio_actual, moneda, cuenta_id, cuentas(nombre)"
+      "id, nombre_activo, tipo_activo, cantidad, precio_compra, precio_actual, tasa_anual, fecha_vencimiento, vendida_at, fecha_venta, precio_venta, moneda, cuenta_id, cuentas(nombre), inversiones_movimientos(id, fecha, cantidad, precio_unitario, monto_total, created_at)"
     )
     .eq("usuario_id", userId)
     .order("created_at", { ascending: false });
 
-  return (data ?? []).map((i: any) => ({
-    id: i.id,
-    nombre_activo: i.nombre_activo,
-    tipo_activo: i.tipo_activo,
-    cantidad: Number(i.cantidad),
-    precio_compra: Number(i.precio_compra),
-    precio_actual: i.precio_actual != null ? Number(i.precio_actual) : null,
-    moneda: i.moneda as MonedaTipo,
-    cuenta_id: i.cuenta_id ?? null,
-    cuenta_nombre: i.cuentas?.nombre ?? null,
-  }));
+  const hoy = new Date().toISOString().slice(0, 10);
+  return (data ?? []).map((i: any) => {
+    const vencidaPf =
+      i.tipo_activo === "Plazo Fijo" &&
+      !!i.fecha_vencimiento &&
+      i.fecha_vencimiento < hoy;
+    const estado: "activa" | "vencida" | "vendida" = i.vendida_at
+      ? "vendida"
+      : vencidaPf
+      ? "vencida"
+      : "activa";
+    return {
+      id: i.id,
+      nombre_activo: i.nombre_activo,
+      tipo_activo: i.tipo_activo,
+      cantidad: Number(i.cantidad),
+      precio_compra: Number(i.precio_compra),
+      precio_actual: i.precio_actual != null ? Number(i.precio_actual) : null,
+      tasa_anual: i.tasa_anual != null ? Number(i.tasa_anual) : null,
+      fecha_vencimiento: i.fecha_vencimiento ?? null,
+      vendida_at: i.vendida_at ?? null,
+      fecha_venta: i.fecha_venta ?? null,
+      precio_venta: i.precio_venta != null ? Number(i.precio_venta) : null,
+      estado,
+      moneda: i.moneda as MonedaTipo,
+      cuenta_id: i.cuenta_id ?? null,
+      cuenta_nombre: i.cuentas?.nombre ?? null,
+      movimientos: ((i.inversiones_movimientos ?? []) as any[])
+      .map((m) => ({
+        id: m.id,
+        fecha: m.fecha,
+        cantidad: Number(m.cantidad),
+        precio_unitario: Number(m.precio_unitario),
+        monto_total: Number(m.monto_total),
+        created_at: m.created_at,
+      }))
+      .sort((a, b) => {
+        const byFecha = b.fecha.localeCompare(a.fecha);
+        if (byFecha !== 0) return byFecha;
+        return String(b.created_at ?? "").localeCompare(String(a.created_at ?? ""));
+      })
+      .map(({ created_at, ...rest }) => rest),
+    };
+  });
 }
 
 /** Cartera agrupada por cuenta broker (inversión). */
@@ -767,11 +813,17 @@ export interface CarteraPorBroker {
 
 export async function getCarteraInversionesPorBroker(
   userId: string
-): Promise<{ brokers: CarteraPorBroker[]; sinBroker: InversionItem[] }> {
+): Promise<{
+  brokers: CarteraPorBroker[];
+  sinBroker: InversionItem[];
+  cerradas: InversionItem[];
+}> {
   const [cuentasConSaldo, inversiones] = await Promise.all([
     getCuentasConSaldoDisponible(userId),
     getInversiones(userId),
   ]);
+  const inversionesActivas = inversiones.filter((i) => i.estado === "activa");
+  const cerradas = inversiones.filter((i) => i.estado !== "activa");
 
   const cuentasBroker = cuentasConSaldo
     .filter((c) => esCuentaBrokerInversion(c.tipo))
@@ -779,10 +831,10 @@ export async function getCarteraInversionesPorBroker(
       a.nombre.localeCompare(b.nombre, "es", { sensitivity: "base" })
     );
 
-  const sinBroker = inversiones.filter((i) => i.cuenta_id == null);
+  const sinBroker = inversionesActivas.filter((i) => i.cuenta_id == null);
 
   const brokers: CarteraPorBroker[] = cuentasBroker.map((c) => {
-    const invs = inversiones.filter((i) => i.cuenta_id === c.id);
+    const invs = inversionesActivas.filter((i) => i.cuenta_id === c.id);
     const valor_mercado_posiciones = invs.reduce(
       (acc, i) =>
         acc + i.cantidad * (i.precio_actual ?? i.precio_compra),
@@ -800,7 +852,7 @@ export async function getCarteraInversionesPorBroker(
     };
   });
 
-  return { brokers, sinBroker };
+  return { brokers, sinBroker, cerradas };
 }
 
 // ── Cotización dólar blue desde dolarapi.com ──────────────────────────────────

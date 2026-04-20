@@ -24,10 +24,6 @@ export default async function CuotasPage() {
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Gastos en cuotas
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Planes en pesos (ARS): al pagar cada cuota se registra un egreso en
-          transacciones, vinculado al plan.
-        </p>
       </div>
 
       <GastosCuotasPanel planes={planes} cuentasARS={cuentasARS} />

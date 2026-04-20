@@ -33,17 +33,6 @@ export default async function OnboardingPage() {
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Bienvenida a Mango
         </h1>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          Te guiamos en tres pasos breves. Podés saltarlos cuando quieras y
-          volver desde el{" "}
-          <Link
-            href="/dashboard"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            dashboard
-          </Link>
-          .
-        </p>
       </div>
 
       <OnboardingWizard
@@ -52,11 +41,11 @@ export default async function OnboardingPage() {
         cuentas={cuentas}
       />
 
-      <p className="text-center text-xs text-muted-foreground">
-        <Link href="/dashboard" className="hover:text-foreground transition-colors">
-          Omitir y volver al inicio
+      <div className="text-center">
+        <Link href="/dashboard" className="text-xs hover:text-foreground transition-colors">
+          Omitir
         </Link>
-      </p>
+      </div>
     </div>
   );
 }

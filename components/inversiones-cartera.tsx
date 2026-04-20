@@ -18,6 +18,7 @@ import {
   HelpCircle,
   RefreshCw,
   Wallet,
+  ListOrdered,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,14 +30,17 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { NuevaInversionDialog } from "@/components/nueva-inversion-dialog";
-import { eliminarInversion, actualizarPrecioActual } from "@/lib/actions";
+import {
+  eliminarInversion,
+  actualizarPrecioActual,
+  venderInversion,
+} from "@/lib/actions";
 import { parseFormDecimal } from "@/lib/form-numbers";
 import type {
   InversionItem,
@@ -79,12 +83,16 @@ function FilaInversion({
   blueVenta,
   onEdit,
   onDeleteRequest,
+  onViewDetail,
+  onSellRequest,
   showBrokerLine,
 }: {
   inv: InversionItem;
   blueVenta: number | null;
   onEdit: (i: InversionItem) => void;
   onDeleteRequest: (i: InversionItem) => void;
+  onViewDetail: (i: InversionItem) => void;
+  onSellRequest: (i: InversionItem) => void;
   showBrokerLine: boolean;
 }) {
   const meta = getTipoMeta(inv.tipo_activo);
@@ -119,6 +127,19 @@ function FilaInversion({
             <Badge variant="outline" className="text-xs font-mono">
               {inv.moneda}
             </Badge>
+            {inv.estado !== "activa" && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-xs",
+                  inv.estado === "vendida"
+                    ? "border-rose-400/40 text-rose-300"
+                    : "border-amber-400/40 text-amber-300"
+                )}
+              >
+                {inv.estado === "vendida" ? "Vendida" : "Vencida"}
+              </Badge>
+            )}
           </div>
           {showBrokerLine && (
             <p className="text-xs text-muted-foreground mt-1">
@@ -139,7 +160,7 @@ function FilaInversion({
               </p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Precio compra</p>
+              <p className="text-xs text-muted-foreground">Precio promedio compra</p>
               <p className="text-sm font-medium text-foreground tabular-nums">
                 {formatCurrency(inv.precio_compra, inv.moneda)}
               </p>
@@ -209,6 +230,32 @@ function FilaInversion({
               )}
             </div>
           )}
+          {inv.tipo_activo === "Plazo Fijo" && (
+            <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+              <span>
+                Tasa anual:{" "}
+                <strong className="text-foreground">
+                  {inv.tasa_anual != null
+                    ? `${inv.tasa_anual.toLocaleString("es-AR", {
+                        maximumFractionDigits: 2,
+                      })}%`
+                    : "—"}
+                </strong>
+              </span>
+              <span>
+                Vencimiento:{" "}
+                <strong className="text-foreground">
+                  {inv.fecha_vencimiento
+                    ? new Intl.DateTimeFormat("es-AR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                      }).format(new Date(`${inv.fecha_vencimiento}T12:00:00`))
+                    : "—"}
+                </strong>
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -216,11 +263,32 @@ function FilaInversion({
             variant="ghost"
             size="icon"
             className="h-8 w-8 text-muted-foreground hover:text-foreground"
+            onClick={() => onViewDetail(inv)}
+            title="Ver detalle de compras"
+          >
+            <ListOrdered className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={() => onEdit(inv)}
             title="Actualizar precio"
+            disabled={inv.estado !== "activa"}
           >
             <Pencil className="h-3.5 w-3.5" />
           </Button>
+          {inv.estado === "activa" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-emerald-400"
+              onClick={() => onSellRequest(inv)}
+              title="Vender activo"
+            >
+              <DollarSign className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -241,17 +309,27 @@ function FilaInversion({
 interface Props {
   brokers: CarteraPorBroker[];
   sinBroker: InversionItem[];
+  cerradas: InversionItem[];
   dolarBlue: CotizacionDolar | null;
 }
 
 // ── Componente principal ──────────────────────────────────────────────────────
 
-export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
+export function InversionesCartera({
+  brokers,
+  sinBroker,
+  cerradas,
+  dolarBlue,
+}: Props) {
   const [editTarget, setEditTarget] = useState<InversionItem | null>(null);
+  const [detailTarget, setDetailTarget] = useState<InversionItem | null>(null);
+  const [sellTarget, setSellTarget] = useState<InversionItem | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InversionItem | null>(null);
   const [isPendingDelete, startDelete] = useTransition();
   const [isPendingEdit, startEdit] = useTransition();
+  const [isPendingSell, startSell] = useTransition();
   const [editError, setEditError] = useState<string | null>(null);
+  const [sellError, setSellError] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const blueVenta = dolarBlue?.venta ?? null;
@@ -342,6 +420,31 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
     });
   }
 
+  function handleSellSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!sellTarget) return;
+    setSellError(null);
+    const formData = new FormData(e.currentTarget);
+    formData.set("inversion_id", sellTarget.id);
+    const precioRaw = ((formData.get("precio_venta") as string) ?? "").trim();
+    const precioVal = parseFormDecimal(precioRaw);
+    if (isNaN(precioVal) || precioVal <= 0) {
+      setSellError("Ingresá un precio de venta válido.");
+      return;
+    }
+    formData.set("precio_venta", String(precioVal));
+    startSell(async () => {
+      const res = await venderInversion(formData);
+      if (res.error) {
+        setSellError(res.error);
+        toast.error(res.error);
+      } else {
+        toast.success("Activo vendido y acreditado en la cuenta broker.");
+        setSellTarget(null);
+      }
+    });
+  }
+
   // ── Render vacío ──────────────────────────────────────────────────────────
 
   if (brokers.length === 0 && sinBroker.length === 0) {
@@ -351,10 +454,6 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">
             Tu cartera está vacía
-          </p>
-          <p className="text-xs text-muted-foreground max-w-xs">
-            Creá al menos una cuenta tipo inversión (broker) en Configuración y
-            cargá tu primer activo.
           </p>
         </div>
         <NuevaInversionDialog />
@@ -512,16 +611,10 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
                   </p>
                 </div>
               </div>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                Saldo de la cuenta menos el valor de mercado de las posiciones en
-                Mango (estimado; puede diferir del broker si faltan movimientos).
-              </p>
             </div>
 
             {b.inversiones.length === 0 ? (
-              <p className="text-sm text-muted-foreground pl-1">
-                Ningún activo en esta billetera.
-              </p>
+              <p className="text-sm text-muted-foreground pl-1">—</p>
             ) : (
               <div className="space-y-3">
                 {b.inversiones.map((inv) => (
@@ -530,6 +623,8 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
                     inv={inv}
                     blueVenta={blueVenta}
                     onEdit={setEditTarget}
+                    onViewDetail={setDetailTarget}
+                    onSellRequest={setSellTarget}
                     onDeleteRequest={(i) => {
                       setDeleteError(null);
                       setDeleteTarget(i);
@@ -547,9 +642,6 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
               Sin cuenta broker
             </h2>
-            <p className="text-xs text-muted-foreground">
-              Activos cargados antes de vincular broker o sin cuenta asignada.
-            </p>
             <div className="space-y-3">
               {sinBroker.map((inv) => (
                 <FilaInversion
@@ -557,6 +649,33 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
                   inv={inv}
                   blueVenta={blueVenta}
                   onEdit={setEditTarget}
+                  onViewDetail={setDetailTarget}
+                  onSellRequest={setSellTarget}
+                  onDeleteRequest={(i) => {
+                    setDeleteError(null);
+                    setDeleteTarget(i);
+                  }}
+                  showBrokerLine
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {cerradas.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              Activos cerrados (vencidos / vendidos)
+            </h2>
+            <div className="space-y-3">
+              {cerradas.map((inv) => (
+                <FilaInversion
+                  key={inv.id}
+                  inv={inv}
+                  blueVenta={blueVenta}
+                  onEdit={setEditTarget}
+                  onViewDetail={setDetailTarget}
+                  onSellRequest={setSellTarget}
                   onDeleteRequest={(i) => {
                     setDeleteError(null);
                     setDeleteTarget(i);
@@ -568,6 +687,133 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
           </section>
         )}
       </div>
+
+      <Dialog
+        open={!!sellTarget}
+        onOpenChange={(v) => {
+          if (!v) {
+            setSellTarget(null);
+            setSellError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Vender activo</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSellSubmit} className="space-y-4 pt-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="sell_precio_venta">
+                Precio de venta ({sellTarget?.moneda})
+              </Label>
+              <Input
+                id="sell_precio_venta"
+                name="precio_venta"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.0001"
+                placeholder="0.00"
+                autoFocus
+                disabled={isPendingSell}
+                required
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="sell_fecha_venta">Fecha de venta</Label>
+              <Input
+                id="sell_fecha_venta"
+                name="fecha_venta"
+                type="date"
+                defaultValue={new Date().toISOString().slice(0, 10)}
+                disabled={isPendingSell}
+              />
+            </div>
+            {sellError && (
+              <Alert variant="destructive" className="py-2">
+                <AlertDescription className="text-sm">{sellError}</AlertDescription>
+              </Alert>
+            )}
+            <DialogFooter className="gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setSellTarget(null);
+                  setSellError(null);
+                }}
+                disabled={isPendingSell}
+              >
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={isPendingSell} className="gap-2">
+                {isPendingSell && <Loader2 className="h-4 w-4 animate-spin" />}
+                Confirmar venta
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: actualizar precio ─────────────────────────────────── */}
+      <Dialog
+        open={!!detailTarget}
+        onOpenChange={(v) => !v && setDetailTarget(null)}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Detalle de compras</DialogTitle>
+          </DialogHeader>
+          {detailTarget && (
+            <div className="space-y-3">
+              <div className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+                Precio promedio actual:{" "}
+                <strong className="text-foreground">
+                  {formatCurrency(detailTarget.precio_compra, detailTarget.moneda)}
+                </strong>
+              </div>
+              {detailTarget.movimientos.length === 0 ? null : (
+                <div className="max-h-[360px] overflow-auto rounded-xl border border-border">
+                  <table className="w-full text-sm">
+                    <thead className="bg-secondary/50 sticky top-0">
+                      <tr>
+                        <th className="text-left p-2">Fecha</th>
+                        <th className="text-right p-2">Cantidad</th>
+                        <th className="text-right p-2">Precio unitario</th>
+                        <th className="text-right p-2">Monto total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detailTarget.movimientos.map((m) => (
+                        <tr key={m.id} className="border-t border-border">
+                          <td className="p-2">
+                            {new Intl.DateTimeFormat("es-AR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            }).format(new Date(`${m.fecha}T12:00:00`))}
+                          </td>
+                          <td className="p-2 text-right tabular-nums">
+                            {m.cantidad.toLocaleString("es-AR", {
+                              maximumFractionDigits: 8,
+                            })}
+                          </td>
+                          <td className="p-2 text-right tabular-nums">
+                            {formatCurrency(m.precio_unitario, detailTarget.moneda)}
+                          </td>
+                          <td className="p-2 text-right tabular-nums font-medium">
+                            {formatCurrency(m.monto_total, detailTarget.moneda)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog: actualizar precio ─────────────────────────────────── */}
       <Dialog
@@ -585,11 +831,6 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
               <RefreshCw className="h-5 w-5 text-primary" />
               Actualizar precio
             </DialogTitle>
-            <DialogDescription>
-              Ingresá el precio actual de{" "}
-              <strong>{editTarget?.nombre_activo}</strong> en{" "}
-              {editTarget?.moneda}.
-            </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleEditSubmit} className="space-y-4 pt-1">
@@ -659,11 +900,6 @@ export function InversionesCartera({ brokers, sinBroker, dolarBlue }: Props) {
               <AlertTriangle className="h-5 w-5" />
               Eliminar inversión
             </DialogTitle>
-            <DialogDescription>
-              ¿Estás seguro de que querés eliminar{" "}
-              <strong>{deleteTarget?.nombre_activo}</strong>? Esta acción no se
-              puede deshacer.
-            </DialogDescription>
           </DialogHeader>
 
           {deleteError && (

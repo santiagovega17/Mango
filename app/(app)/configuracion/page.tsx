@@ -4,7 +4,6 @@ import { formatCurrency } from "@/lib/utils";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -113,9 +112,6 @@ export default async function ConfiguracionPage() {
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Configuración
         </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Administrá tu perfil y tus cuentas financieras.
-        </p>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -128,9 +124,6 @@ export default async function ConfiguracionPage() {
                 <User className="h-4 w-4 text-primary" />
                 Mi perfil
               </CardTitle>
-              <CardDescription className="text-xs">
-                Datos que se muestran en la aplicación.
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
               {/* Avatar */}
@@ -211,9 +204,6 @@ export default async function ConfiguracionPage() {
                     </Badge>
                   )}
                 </CardTitle>
-                <CardDescription className="text-xs mt-1">
-                  Bancos, efectivo, billeteras y más.
-                </CardDescription>
               </div>
               <NuevaCuentaDialog triggerVariant="default" triggerSize="sm" />
             </CardHeader>
@@ -226,13 +216,7 @@ export default async function ConfiguracionPage() {
                     <Wallet className="h-7 w-7 text-primary" />
                   </div>
                   <div className="space-y-1">
-                    <p className="text-sm font-medium text-foreground">
-                      Todavía no tenés cuentas
-                    </p>
-                    <p className="text-xs text-muted-foreground max-w-xs">
-                      Creá tu primera cuenta para empezar a registrar tus
-                      movimientos financieros.
-                    </p>
+                    <p className="text-sm font-medium text-foreground">Sin cuentas</p>
                   </div>
                   <NuevaCuentaDialog
                     triggerLabel="Crear primera cuenta"

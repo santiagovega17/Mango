@@ -91,9 +91,6 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Dashboard
           </h1>
-          <p className="text-sm text-muted-foreground mt-1 capitalize">
-            {mesActual}
-          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <NuevaCuentaDialog triggerVariant="outline" triggerSize="sm" />
@@ -109,13 +106,7 @@ export default async function DashboardPage() {
               <Wallet className="h-8 w-8 text-primary" />
             </div>
             <div className="space-y-1">
-              <p className="text-base font-semibold text-foreground">
-                ¡Bienvenido a Mango!
-              </p>
-              <p className="text-sm text-muted-foreground max-w-sm">
-                Todavía no tenés cuentas registradas. Creá tu primera cuenta
-                para empezar a controlar tus finanzas.
-              </p>
+              <p className="text-base font-semibold text-foreground">Sin cuentas</p>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-3">
               <NuevaCuentaDialog
@@ -123,12 +114,6 @@ export default async function DashboardPage() {
                 triggerVariant="default"
                 triggerSize="default"
               />
-              <Link
-                href="/onboarding"
-                className="text-sm text-muted-foreground hover:text-primary underline-offset-4 hover:underline transition-colors"
-              >
-                Ver guía paso a paso
-              </Link>
             </div>
           </CardContent>
         </Card>

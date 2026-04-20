@@ -17,6 +17,7 @@ import {
   CalendarClock,
   Banknote,
   Repeat,
+  ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,11 +29,14 @@ const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/transacciones", label: "Transacciones", icon: ArrowLeftRight },
   { href: "/inversiones", label: "Inversiones", icon: TrendingUp },
+  { href: "/configuracion", label: "Configuración", icon: Settings },
+];
+
+const planningLinks = [
   { href: "/cuotas", label: "Cuotas", icon: CalendarClock },
   { href: "/gastos-fijos", label: "Gastos fijos", icon: Repeat },
   { href: "/por-cobrar", label: "Por cobrar", icon: Banknote },
   { href: "/resumen", label: "Resumen anual", icon: CalendarRange },
-  { href: "/configuracion", label: "Configuración", icon: Settings },
 ];
 
 interface NavbarProps {
@@ -44,8 +48,14 @@ export function Navbar({ userEmail, userName }: NavbarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [planningOpen, setPlanningOpen] = useState(false);
+  const [planningMobileOpen, setPlanningMobileOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+
+  const isPlanningActive = planningLinks.some((l) =>
+    pathname.startsWith(l.href)
+  );
 
   function handleSignOut() {
     startTransition(async () => {
@@ -99,6 +109,59 @@ export function Navbar({ userEmail, userName }: NavbarProps) {
                 </Link>
               );
             })}
+
+            <div className="relative">
+              <button
+                onClick={() => setPlanningOpen((v) => !v)}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  isPlanningActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                )}
+              >
+                <ListChecks className="h-4 w-4" />
+                Planificación
+                <ChevronDown
+                  className={cn(
+                    "h-3.5 w-3.5 transition-transform",
+                    planningOpen && "rotate-180"
+                  )}
+                />
+              </button>
+
+              {planningOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setPlanningOpen(false)}
+                  />
+                  <div className="absolute left-0 top-full mt-2 z-20 w-80 rounded-xl border border-border bg-card shadow-xl shadow-black/30 py-2 animate-fade-in">
+                    <div className="px-2 space-y-1">
+                      {planningLinks.map(({ href, label, icon: Icon }) => {
+                        const isActive = pathname.startsWith(href);
+                        return (
+                          <Link
+                            key={href}
+                            href={href}
+                            onClick={() => setPlanningOpen(false)}
+                            className={cn(
+                              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                              isActive
+                                ? "bg-primary/10 text-primary"
+                                : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                            )}
+                          >
+                            <Icon className="h-4 w-4" />
+                            <span>{label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </nav>
 
           {/* Botón + Nuevo Desktop */}
@@ -221,6 +284,51 @@ export function Navbar({ userEmail, userName }: NavbarProps) {
                 </Link>
               );
             })}
+
+            <button
+              onClick={() => setPlanningMobileOpen((v) => !v)}
+              className={cn(
+                "flex w-full items-center justify-between rounded-lg px-3 py-3 text-sm font-medium transition-colors",
+                isPlanningActive
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
+              )}
+            >
+              <span className="flex items-center gap-3">
+                <ListChecks className="h-4 w-4" />
+                Planificación
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  planningMobileOpen && "rotate-180"
+                )}
+              />
+            </button>
+
+            {planningMobileOpen && (
+              <div className="ml-5 mt-1 space-y-1">
+                {planningLinks.map(({ href, label, icon: Icon }) => {
+                  const isActive = pathname.startsWith(href);
+                  return (
+                    <Link
+                      key={href}
+                      href={href}
+                      onClick={() => setMobileOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                        isActive
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
 
             <Separator className="my-2" />
 

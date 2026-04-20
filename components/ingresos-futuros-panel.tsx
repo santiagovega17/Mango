@@ -15,7 +15,6 @@ import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -178,9 +177,7 @@ export function IngresosFuturosPanel({
       {cuentas.length === 0 && (
         <Alert>
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            Necesitás al menos una cuenta para anotar ingresos por cobrar.
-          </AlertDescription>
+          <AlertDescription>Sin cuentas disponibles.</AlertDescription>
         </Alert>
       )}
 
@@ -188,17 +185,10 @@ export function IngresosFuturosPanel({
         <h2 className="text-lg font-semibold text-foreground mb-1">
           Pendientes
         </h2>
-        <p className="text-sm text-muted-foreground mb-4">
-          Dinero que esperás cobrar. La fecha es opcional si todavía no sabés
-          cuándo cae.
-        </p>
 
         {pendientesInicial.length === 0 ? (
           <Card>
-            <CardContent className="py-12 text-center text-sm text-muted-foreground">
-              No tenés montos por cobrar. Agregá uno cuando tengas plata en
-              camino.
-            </CardContent>
+            <CardContent className="py-12 text-center text-sm text-muted-foreground">Sin pendientes.</CardContent>
           </Card>
         ) : (
           <div className="rounded-xl border border-border overflow-x-auto">
@@ -270,9 +260,6 @@ export function IngresosFuturosPanel({
           <h2 className="text-lg font-semibold text-foreground mb-1">
             Cobrados recientes
           </h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            Últimos registrados como ingreso en tu cuenta.
-          </p>
           <div className="rounded-xl border border-border overflow-x-auto opacity-90">
             <Table>
               <TableHeader>
@@ -319,10 +306,6 @@ export function IngresosFuturosPanel({
               <Banknote className="h-5 w-5 text-amber-400" />
               Ingreso por cobrar
             </DialogTitle>
-            <DialogDescription>
-              Se suma al total &quot;por cobrar&quot; del dashboard. Cuando
-              entre el dinero, usá Cobrar para generar el ingreso real.
-            </DialogDescription>
           </DialogHeader>
           <form
             className="space-y-4"
@@ -459,10 +442,6 @@ export function IngresosFuturosPanel({
                   <Pencil className="h-5 w-5 text-muted-foreground" />
                   Editar ingreso pendiente
                 </DialogTitle>
-                <DialogDescription>
-                  Cambiá monto, moneda, cuenta o fecha esperada. No aplica a
-                  ingresos ya cobrados.
-                </DialogDescription>
               </DialogHeader>
               <form
                 className="space-y-4"
@@ -606,10 +585,6 @@ export function IngresosFuturosPanel({
             <>
               <DialogHeader>
                 <DialogTitle>Registrar cobro</DialogTitle>
-                <DialogDescription>
-                  Se creará un ingreso en la cuenta elegida con la fecha
-                  indicada. Podés ajustar el monto si cobraste distinto.
-                </DialogDescription>
               </DialogHeader>
               <form
                 className="space-y-4"

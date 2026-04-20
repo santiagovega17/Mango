@@ -14,7 +14,6 @@ import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -126,8 +125,7 @@ export function GastosCuotasPanel({ planes, cuentasARS }: Props) {
       {planes.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-sm text-muted-foreground">
-            No tenés planes en cuotas. Creá uno para registrar egresos mes a mes
-            en pesos.
+            —
           </CardContent>
         </Card>
       ) : (
@@ -246,10 +244,6 @@ export function GastosCuotasPanel({ planes, cuentasARS }: Props) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Registrar pago de cuota</DialogTitle>
-            <DialogDescription>
-              Se creará un egreso en ARS vinculado a este plan. Por defecto se
-              usa la fecha de la próxima cuota.
-            </DialogDescription>
           </DialogHeader>
           {pagarPlan && (
             <form
@@ -344,9 +338,6 @@ function DialogNuevoPlan({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nuevo plan en cuotas</DialogTitle>
-            <DialogDescription>
-              Necesitás al menos una cuenta en pesos (ARS) para crear un plan.
-            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" onClick={() => onOpenChange(false)}>
@@ -531,9 +522,6 @@ function DialogEditarPlan({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Editar plan</DialogTitle>
-            <DialogDescription>
-              No tenés cuentas en ARS; no se puede editar la cuenta de este plan.
-            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" onClick={() => onOpenChange(false)}>
@@ -633,8 +621,7 @@ function DialogEditarPlan({
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            Cuotas ya pagadas: {plan.cuotas_pagadas}. La cantidad no puede ser
-            menor a eso.
+            Pagadas: {plan.cuotas_pagadas}
           </p>
           <div className="space-y-2">
             <Label htmlFor="edit_fecha">Primera cuota</Label>
